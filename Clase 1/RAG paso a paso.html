@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG paso a paso</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Reproductor de clase: escenario claro 16:9. Azul = fase de ingesta, verde = fase de consulta, ámbar = la pregunta, violeta = espacio vectorial. */
+  --bg:#E8EDF4;
+  --surface:#FFFFFF;
+  --ink:#14213D;
+  --muted:#56657C;
+  --line:#CFD8E5;
+  --blue:#2F6FED;
+  --green:#0F9D67;
+  --amber:#C98A08;
+  --violet:#6B5BD6;
+  --font-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --font-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding:24px 16px 48px;display:flex;flex-direction:column;gap:16px}
+header h1{font-family:var(--font-display);font-weight:700;font-size:clamp(1.6rem,3vw,2.2rem);margin:0;text-wrap:balance;letter-spacing:-0.01em}
+header p{margin:4px 0 0;color:var(--muted);max-width:70ch}
+
+.player{background:#0E1830;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(20,33,61,.18);display:flex;flex-direction:column;container-type:inline-size}
+.screen{position:relative;aspect-ratio:16/9;width:100%;background:#F7F9FC}
+.screen canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.bigplay{position:absolute;left:50%;bottom:5%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;font:600 clamp(14px,1.7cqw,22px)/1 var(--font-display);color:#fff;background:var(--ink);border:0;border-radius:999px;padding:.75em 1.4em .75em 1.1em;cursor:pointer;box-shadow:0 8px 24px rgba(20,33,61,.3)}
+.bigplay svg{width:1.1em;height:1.1em}
+.bigplay:hover{background:#22345C}
+.bigplay[hidden]{display:none}
+.caption{margin:0;min-height:calc(2 * 1.35em + 1.2em);padding:.6em 1.2em;color:#F4F7FB;font:500 clamp(15px,1.85cqw,28px)/1.35 var(--font-body);display:flex;align-items:center;justify-content:center;text-align:center;text-wrap:balance}
+.caption span{max-width:62ch}
+.caption.fresh span{animation:capIn .35s ease-out}
+@keyframes capIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+.player:fullscreen{border-radius:0;justify-content:center;background:#0E1830}
+.player:fullscreen .screen{width:min(100vw, calc((100vh - 7em) * 16 / 9));margin:0 auto}
+.player:fullscreen .caption{font-size:clamp(18px,2.2vw,34px)}
+
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.btn{display:inline-flex;align-items:center;gap:8px;font:600 15px/1 var(--font-body);color:var(--ink);background:#F1F4F9;border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer}
+.btn:hover{background:#E6ECF5}
+.btn svg{width:18px;height:18px;flex:none}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:#fff;min-width:9.5em;justify-content:center}
+.btn.primary:hover{background:#22345C}
+.btn:focus-visible,.chap:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.scrub{position:relative;flex:1 1 260px;min-width:200px;padding-top:4px}
+.scrub input{width:100%;accent-color:var(--ink);margin:0}
+.ticks{position:relative;height:8px;margin-top:2px}
+.ticks i{position:absolute;top:0;width:2px;height:8px;border-radius:1px;background:var(--line)}
+.ticks i.p1{background:var(--blue)}
+.ticks i.p2{background:var(--green)}
+.time{font:500 15px/1 var(--font-mono);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.row2{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;width:100%;border-top:1px solid var(--line);padding-top:10px;font-size:15px;color:var(--muted)}
+.row2 label{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.row2 select{font:600 15px var(--font-body);color:var(--ink);background:#F1F4F9;border:1px solid var(--line);border-radius:8px;padding:5px 8px}
+.row2 input[type=checkbox]{width:18px;height:18px;accent-color:var(--ink)}
+.row2 .keys{margin-left:auto}
+kbd{font:600 13px var(--font-mono);background:#F1F4F9;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+
+.chapters{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.chap{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;font:inherit;color:var(--ink)}
+.chap:hover{background:#F6F8FC}
+.chap .n{font:600 12px/1.2 var(--font-mono);color:var(--muted)}
+.chap .t{font:600 15px/1.25 var(--font-display)}
+.chap.p1{border-left-color:var(--blue)}
+.chap.p2{border-left-color:var(--green)}
+.chap[aria-current="step"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.chap[aria-current="step"] .n{color:#B9C6DA}
+.chap.p1[aria-current="step"]{border-left-color:var(--blue)}
+.chap.p2[aria-current="step"]{border-left-color:var(--green)}
+
+.extras{display:grid;grid-template-columns:3fr 2fr;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.card h2{font:700 1.15rem/1.3 var(--font-display);margin:0 0 10px}
+dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 16px}
+dt{font-weight:700}
+dt.p1{color:var(--blue)} dt.p2{color:var(--green)} dt.v{color:var(--violet)}
+dd{margin:0;color:var(--ink)}
+ol{margin:0;padding-left:1.3em;display:grid;gap:8px}
+@media (max-width:820px){
+  .extras{grid-template-columns:1fr}
+  dl{grid-template-columns:1fr;gap:2px}
+  dd{margin-bottom:8px}
+  .row2 .keys{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .caption.fresh span{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>RAG paso a paso</h1>
+    <p>Animación para clase: cómo un modelo de lenguaje responde con tus propios documentos. Recorre la ingesta (fuentes, chunking, embeddings, base de datos vectorial) y la consulta (recuperación, prompt aumentado y respuesta fundamentada).</p>
+  </header>
+
+  <section class="player" id="player" aria-label="Animación">
+    <div class="screen">
+      <canvas id="stage" role="img" aria-label="Escena de la animación"></canvas>
+      <button class="bigplay" id="bigplay" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Reproducir animación
+      </button>
+    </div>
+    <p class="caption" id="caption" aria-live="polite"><span></span></p>
+  </section>
+
+  <div class="controls">
+    <button class="btn" id="prev" type="button" aria-label="Escena anterior">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9 12z" fill="currentColor"/></svg>
+    </button>
+    <button class="btn primary" id="play" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true" id="playIcon"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+      <span id="playLabel">Reproducir</span>
+    </button>
+    <button class="btn" id="next" type="button" aria-label="Escena siguiente">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l11-7z" fill="currentColor"/></svg>
+    </button>
+    <div class="scrub">
+      <input type="range" id="scrub" min="0" max="100" step="0.05" value="0" aria-label="Posición en la animación">
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+    </div>
+    <span class="time" id="time">0:00 / 0:00</span>
+    <div class="row2">
+      <label for="speed">Velocidad
+        <select id="speed">
+          <option value="0.5">0,5×</option>
+          <option value="0.75">0,75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1,25×</option>
+          <option value="1.5">1,5×</option>
+        </select>
+      </label>
+      <label for="pauseEach"><input type="checkbox" id="pauseEach"> Pausar al final de cada escena</label>
+      <button class="btn" id="fs" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5v2H6v3zm10-5h6v5h-2V6h-4zM4 15h2v3h3v2H4zm14 0h2v5h-5v-2h3z" fill="currentColor"/></svg>
+        Pantalla completa
+      </button>
+      <span class="keys"><kbd>Espacio</kbd> reproducir o pausar · <kbd>←</kbd> <kbd>→</kbd> escenas · <kbd>F</kbd> pantalla completa</span>
+    </div>
+  </div>
+
+  <nav class="chapters" id="chapters" aria-label="Escenas"></nav>
+
+  <section class="extras">
+    <div class="card">
+      <h2>Glosario rápido</h2>
+      <dl>
+        <dt>RAG</dt><dd>Retrieval-Augmented Generation: buscar información en tus documentos y dársela al LLM antes de que responda.</dd>
+        <dt>LLM</dt><dd>Modelo de lenguaje grande. Genera texto a partir de lo que aprendió en su entrenamiento.</dd>
+        <dt>Alucinación</dt><dd>Respuesta que suena convincente pero es inventada.</dd>
+        <dt class="p1">Chunking</dt><dd>Dividir los documentos en fragmentos (chunks), a veces con un pequeño solapamiento.</dd>
+        <dt class="v">Embedding</dt><dd>Vector de números que representa el significado de un texto. Significados parecidos, vectores cercanos.</dd>
+        <dt class="p1">Base de datos vectorial</dt><dd>Guarda vectores, texto y metadatos, y encuentra rápido los vectores más cercanos.</dd>
+        <dt class="p2">Recuperación (top-k)</dt><dd>Elegir los k fragmentos más parecidos a la pregunta, por ejemplo con similitud coseno.</dd>
+        <dt class="p2">Respuesta fundamentada</dt><dd>Respuesta basada en los fragmentos recuperados, que cita su fuente.</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>Para comentar en clase</h2>
+      <ol>
+        <li>¿Qué pasaría si cada fragmento fuera una página entera? ¿Y una sola frase?</li>
+        <li>¿Por qué la pregunta debe pasar por el mismo modelo de embeddings que los documentos?</li>
+        <li>Si el reglamento cambia mañana, ¿qué hay que actualizar: el modelo o la base vectorial?</li>
+        <li>¿Qué debería responder el sistema si ningún fragmento habla del tema preguntado?</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const W = 1600, H = 900, TAU = Math.PI * 2;
+const C = {
+  bg:'#F7F9FC', grid:'#E3E9F1', ink:'#14213D', muted:'#56657C', faint:'#9AA8BC', line:'#D3DCE8', card:'#FFFFFF', panel:'#F1F4F8',
+  blue:'#2F6FED', blueSoft:'#E4EDFE', blueMid:'#B6CBF8',
+  green:'#0F9D67', greenSoft:'#DDF3E9', greenMid:'#9ED9BF',
+  amber:'#D9950B', amberSoft:'#FDF0D2', amberInk:'#8A5D00',
+  violet:'#6B5BD6', violetSoft:'#ECE9FB',
+  red:'#D23F3F', redSoft:'#FBE6E6',
+  teal:'#1E95AE', pink:'#C2588F', brown:'#A0702A'
+};
+const F = {
+  display:'"Sora", "Segoe UI", system-ui, sans-serif',
+  body:'"Source Sans 3", "Segoe UI", system-ui, sans-serif',
+  mono:'"JetBrains Mono", ui-monospace, Menlo, monospace'
+};
+
+/* ---------- utilidades ---------- */
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const eio = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const eout = t => 1 - Math.pow(1 - t, 3);
+const lin = t => t;
+const back = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const P = (t, a, b, e = eio) => e(clamp((t - a) / (b - a)));
+const bump = (t, a, b) => Math.sin(Math.PI * clamp((t - a) / (b - a)));
+
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+let scale = 1;
+
+function font(size, weight = 400, fam = 'body', style = '') {
+  ctx.font = (style ? style + ' ' : '') + weight + ' ' + size + 'px ' + F[fam];
+}
+function text(s, x, y, o = {}) {
+  const { size = 26, weight = 400, fam = 'body', color = C.ink, align = 'left', base = 'alphabetic', style = '' } = o;
+  font(size, weight, fam, style);
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = base;
+  ctx.fillText(s, x, y);
+}
+function wrap(s, maxW) {
+  const words = s.split(' '); const out = []; let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test;
+  }
+  if (line) out.push(line);
+  return out;
+}
+function ellipsize(s, maxW) {
+  if (ctx.measureText(s).width <= maxW) return s;
+  while (s.length && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+  return s.trimEnd() + '…';
+}
+function para(s, x, y, maxW, o = {}) {
+  const { size = 24, weight = 400, fam = 'body', color = C.ink, align = 'left', lh = 1.3, style = '', maxLines = 99, reveal = 1 } = o;
+  font(size, weight, fam, style);
+  let ls = wrap(s, maxW);
+  if (ls.length > maxLines) {
+    ls = ls.slice(0, maxLines);
+    ls[maxLines - 1] = ellipsize(ls[maxLines - 1] + ' …', maxW);
+  }
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
+  const total = ls.reduce((n, l) => n + l.length, 0);
+  let left = Math.round(total * clamp(reveal));
+  ls.forEach((l, i) => {
+    if (left <= 0) return;
+    const part = l.slice(0, left); left -= l.length;
+    ctx.fillText(part, x, y + i * size * lh);
+  });
+  return ls.length * size * lh;
+}
+function rr(x, y, w, h, r) {
+  w = Math.max(0, w); h = Math.max(0, h); r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function box(x, y, w, h, o = {}) {
+  const { r = 18, fill = C.card, stroke = C.line, lw = 2, shadow = true, dash = null } = o;
+  ctx.save();
+  if (shadow) { ctx.shadowColor = 'rgba(20,33,61,0.10)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 6; }
+  rr(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  ctx.restore();
+  if (stroke) {
+    ctx.save(); if (dash) ctx.setLineDash(dash);
+    rr(x, y, w, h, r); ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
+    ctx.restore();
+  }
+}
+function A(a, fn) { if (a <= 0.002) return; ctx.save(); ctx.globalAlpha *= Math.min(1, a); fn(); ctx.restore(); }
+function scaleAt(cx, cy, s, fn) { ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy); fn(); ctx.restore(); }
+function pill(label, x, y, o = {}) {
+  const { size = 18, weight = 700, fam = 'display', fill = C.blueSoft, color = C.blue, stroke = null, h = size * 2, padX = size * 0.9, align = 'left' } = o;
+  font(size, weight, fam);
+  const w = ctx.measureText(label).width + padX * 2;
+  const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  box(x0, y, w, h, { r: h / 2, fill, stroke, shadow: false, lw: 2 });
+  text(label, x0 + padX, y + h / 2 + 1, { size, weight, fam, color, base: 'middle' });
+  return w;
+}
+function arrow(x1, y1, x2, y2, o = {}) {
+  const { color = C.faint, lw = 3, head = 13, p = 1, dash = null } = o;
+  if (p <= 0.01) return;
+  const x = lerp(x1, x2, p), y = lerp(y1, y2, p);
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const len = Math.hypot(x - x1, y - y1);
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  if (len > head) {
+    if (dash) ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x1, y1);
+    ctx.lineTo(x - Math.cos(ang) * head * 0.8, y - Math.sin(ang) * head * 0.8); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.beginPath(); ctx.moveTo(x, y);
+  ctx.lineTo(x - Math.cos(ang - 0.45) * head, y - Math.sin(ang - 0.45) * head);
+  ctx.lineTo(x - Math.cos(ang + 0.45) * head, y - Math.sin(ang + 0.45) * head);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function polyLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
+function pointAlong(pts, u) {
+  const L = polyLen(pts); let rem = L * clamp(u);
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (rem <= d || i === pts.length - 1) { const f = d ? clamp(rem / d) : 0; return [lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)]; }
+    rem -= d;
+  }
+  return pts[pts.length - 1];
+}
+function pathArrow(pts, o = {}) {
+  const p = o.p === undefined ? 1 : o.p;
+  if (p <= 0.01) return;
+  const L = polyLen(pts); let rem = L * p; const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (rem >= d) { out.push(pts[i]); rem -= d; }
+    else { const f = rem / d; out.push([lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)]); break; }
+  }
+  if (out.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = o.color || C.faint; ctx.lineWidth = o.lw || 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(out[0][0], out[0][1]);
+  for (let i = 1; i < out.length - 1; i++) ctx.lineTo(out[i][0], out[i][1]);
+  ctx.stroke(); ctx.restore();
+  const a = out[out.length - 2], b = out[out.length - 1];
+  arrow(a[0], a[1], b[0], b[1], { ...o, p: 1 });
+}
+function dot(x, y, r, col, o = {}) {
+  ctx.save();
+  if (o.glow) { ctx.shadowColor = col; ctx.shadowBlur = o.glow; }
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = col; ctx.fill();
+  ctx.restore();
+  if (o.ring) { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke(); }
+}
+function star(x, y, r, col, o = {}) {
+  ctx.save();
+  if (o.glow) { ctx.shadowColor = col; ctx.shadowBlur = o.glow; }
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r;
+    const px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+  ctx.restore();
+  ctx.save(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r * 0.45 : r;
+    const px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+    i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  }
+  ctx.closePath(); ctx.stroke(); ctx.restore();
+}
+function bubble(x, y, w, h, o = {}) {
+  const { fill = '#fff', stroke = C.line, lw = 2.5, tail = null, r = 22 } = o;
+  ctx.save(); ctx.shadowColor = 'rgba(20,33,61,0.10)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6;
+  rr(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+  let tp = null;
+  if (tail) {
+    const tw = tail.width || 34;
+    if (tail.side === 'bottom') tp = [[tail.at - tw / 2, y + h], tail.tip, [tail.at + tw / 2, y + h]];
+    else if (tail.side === 'left') tp = [[x, tail.at - tw / 2], tail.tip, [x, tail.at + tw / 2]];
+    ctx.beginPath(); ctx.moveTo(tp[0][0], tp[0][1]); ctx.lineTo(tp[1][0], tp[1][1]); ctx.lineTo(tp[2][0], tp[2][1]); ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+  }
+  rr(x, y, w, h, r); ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+  if (tp) {
+    ctx.fillStyle = fill;
+    if (tail.side === 'bottom') ctx.fillRect(tp[0][0] + lw, y + h - lw - 1, tp[2][0] - tp[0][0] - 2 * lw, lw * 2 + 2);
+    else ctx.fillRect(x - lw - 1, tp[0][1] + lw, lw * 2 + 2, tp[2][1] - tp[0][1] - 2 * lw);
+    ctx.beginPath(); ctx.moveTo(tp[0][0], tp[0][1]); ctx.lineTo(tp[1][0], tp[1][1]); ctx.lineTo(tp[2][0], tp[2][1]);
+    ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.lineJoin = 'round'; ctx.stroke();
+  }
+}
+/* texto con tramos resaltados */
+function richPara(segs, x, y, maxW, o = {}) {
+  const { size = 20, lh = 1.45, color = C.ink, hl = C.blueMid, hlA = 1, fam = 'body', weight = 400 } = o;
+  font(size, weight, fam);
+  const toks = [];
+  segs.forEach(([s, h]) => s.split(' ').forEach((w, i, arr) => { if (w) toks.push({ w, h, sp: true }); }));
+  let cx = x, cy = y; const space = ctx.measureText(' ').width;
+  const placed = [];
+  toks.forEach(tk => {
+    const tw = ctx.measureText(tk.w).width;
+    if (cx + tw > x + maxW && cx > x) { cx = x; cy += size * lh; }
+    placed.push({ ...tk, x: cx, y: cy, tw }); cx += tw + space;
+  });
+  placed.forEach((p, i) => {
+    if (p.h && hlA > 0) {
+      const nx = placed[i + 1];
+      const ext = nx && nx.h && nx.y === p.y ? space : 0;
+      ctx.save(); ctx.globalAlpha *= hlA; ctx.fillStyle = hl;
+      ctx.fillRect(p.x - 2, p.y - size * 0.92, p.tw + ext + 4, size * 1.22); ctx.restore();
+    }
+  });
+  ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  placed.forEach(p => ctx.fillText(p.w, p.x, p.y));
+  return cy - y + size * lh;
+}
+
+/* ---------- iconos ---------- */
+function iconDoc(cx, cy, s, col, o = {}) {
+  const w = s * 0.76, h = s, x = cx - w / 2, y = cy - h / 2, f = s * 0.24;
+  ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w - f, y); ctx.lineTo(x + w, y + f); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath();
+  ctx.fillStyle = o.fill || '#fff'; ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.05); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + w - f, y); ctx.lineTo(x + w - f, y + f); ctx.lineTo(x + w, y + f); ctx.stroke();
+  ctx.lineWidth = Math.max(1.5, s * 0.045);
+  for (let i = 0; i < 4; i++) {
+    const yy = y + h * 0.38 + i * h * 0.14;
+    ctx.beginPath(); ctx.moveTo(x + w * 0.18, yy); ctx.lineTo(x + w * (i === 3 ? 0.55 : 0.82), yy); ctx.stroke();
+  }
+  ctx.restore();
+}
+function iconPdf(cx, cy, s) {
+  iconDoc(cx, cy, s, C.red);
+  const w = s * 0.76;
+  box(cx - w / 2 - s * 0.12, cy + s * 0.02, w * 0.78, s * 0.28, { r: 4, fill: C.red, stroke: null, shadow: false });
+  text('PDF', cx - w / 2 - s * 0.12 + w * 0.39, cy + s * 0.165, { size: s * 0.19, weight: 800, fam: 'display', color: '#fff', align: 'center', base: 'middle' });
+}
+function iconGlobe(cx, cy, s, col) {
+  const r = s / 2;
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, s * 0.05);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.45, r, 0, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.86, cy - r * 0.5); ctx.lineTo(cx + r * 0.86, cy - r * 0.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.86, cy + r * 0.5); ctx.lineTo(cx + r * 0.86, cy + r * 0.5); ctx.stroke();
+  ctx.restore();
+}
+function iconDB(cx, cy, s, col, o = {}) {
+  const w = s * (o.wr || 0.8), h = s, rx = w / 2, ry = h * 0.12, top = cy - h / 2 + ry, bot = cy + h / 2 - ry;
+  ctx.save(); ctx.lineWidth = Math.max(2, s * (o.lwr || 0.045)); ctx.strokeStyle = col;
+  ctx.beginPath(); ctx.moveTo(cx - rx, top); ctx.lineTo(cx - rx, bot);
+  ctx.ellipse(cx, bot, rx, ry, 0, Math.PI, 0, true);
+  ctx.lineTo(cx + rx, top);
+  ctx.ellipse(cx, top, rx, ry, 0, 0, Math.PI, true);
+  ctx.closePath(); ctx.fillStyle = o.fill || '#fff'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx, top, rx, ry, 0, 0, TAU); ctx.fillStyle = o.top || '#fff'; ctx.fill(); ctx.stroke();
+  for (let k = 1; k <= 2; k++) {
+    const yb = top + (bot - top) * k / 3;
+    ctx.beginPath(); ctx.ellipse(cx, yb, rx, ry, 0, 0, Math.PI, false); ctx.stroke();
+  }
+  ctx.restore();
+}
+function iconUser(cx, cy, s, col, o = {}) {
+  ctx.save(); ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(cx, cy - s * 0.18, s * 0.19, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(cx - s * 0.38, cy + s * 0.46); ctx.arc(cx, cy + s * 0.46, s * 0.38, Math.PI, 0); ctx.closePath(); ctx.fill();
+  if (o.cap) {
+    const hy = cy - s * 0.36;
+    ctx.fillStyle = o.capCol || C.blue;
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.32, hy); ctx.lineTo(cx, hy - s * 0.11); ctx.lineTo(cx + s * 0.32, hy); ctx.lineTo(cx, hy + s * 0.11); ctx.closePath(); ctx.fill();
+    ctx.fillRect(cx - s * 0.15, hy, s * 0.30, s * 0.09);
+    ctx.strokeStyle = o.capCol || C.blue; ctx.lineWidth = Math.max(2, s * 0.025);
+    ctx.beginPath(); ctx.moveTo(cx + s * 0.24, hy + s * 0.02); ctx.lineTo(cx + s * 0.26, hy + s * 0.17); ctx.stroke();
+    dot(cx + s * 0.26, hy + s * 0.19, s * 0.03, o.capCol || C.blue);
+  }
+  ctx.restore();
+}
+function iconChip(cx, cy, s, col, label = 'LLM', glow = 0) {
+  const x = cx - s / 2, y = cy - s / 2, pin = s * 0.07, pl = s * 0.09;
+  ctx.save(); ctx.fillStyle = col;
+  for (let i = 0; i < 4; i++) {
+    const o = s * (0.2 + i * 0.2) - pin / 2;
+    ctx.fillRect(x + o, y - pl, pin, pl); ctx.fillRect(x + o, y + s, pin, pl);
+    ctx.fillRect(x - pl, y + o, pl, pin); ctx.fillRect(x + s, y + o, pl, pin);
+  }
+  if (glow > 0) { ctx.shadowColor = C.green; ctx.shadowBlur = 40 * glow; }
+  rr(x, y, s, s, s * 0.16); ctx.fill();
+  ctx.restore();
+  ctx.save(); rr(x + s * 0.12, y + s * 0.12, s * 0.76, s * 0.76, s * 0.1); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = Math.max(1.5, s * 0.02); ctx.stroke(); ctx.restore();
+  text(label, cx, cy + s * 0.02, { size: s * 0.24, weight: 800, fam: 'display', color: '#fff', align: 'center', base: 'middle' });
+}
+const NET_N = [[-.36, -.28], [-.36, .28], [0, -.38], [0, 0], [0, .38], [.36, -.2], [.36, .22]];
+const NET_E = [[0, 2], [0, 3], [0, 4], [1, 2], [1, 3], [1, 4], [2, 5], [2, 6], [3, 5], [3, 6], [4, 5], [4, 6]];
+function iconNet(cx, cy, s, col, act = -1) {
+  ctx.save(); ctx.strokeStyle = col; ctx.globalAlpha *= 0.55; ctx.lineWidth = Math.max(1.5, s * 0.03);
+  NET_E.forEach(([a, b]) => { ctx.beginPath(); ctx.moveTo(cx + NET_N[a][0] * s, cy + NET_N[a][1] * s); ctx.lineTo(cx + NET_N[b][0] * s, cy + NET_N[b][1] * s); ctx.stroke(); });
+  ctx.restore();
+  NET_N.forEach(([nx, ny], i) => {
+    const layer = nx < -0.1 ? 0 : nx > 0.1 ? 2 : 1;
+    const on = act >= 0 && Math.abs(act - layer) < 0.6;
+    dot(cx + nx * s, cy + ny * s, s * (on ? 0.1 : 0.075), on ? C.amber : col, { glow: on ? 14 : 0 });
+  });
+}
+function iconSearch(cx, cy, s, col) {
+  iconDoc(cx - s * 0.12, cy - s * 0.04, s * 0.8, C.faint);
+  ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = s * 0.09; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx + s * 0.12, cy + s * 0.08, s * 0.2, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + s * 0.27, cy + s * 0.23); ctx.lineTo(cx + s * 0.42, cy + s * 0.38); ctx.stroke();
+  ctx.restore();
+}
+function iconCheck(cx, cy, r, col, mark = '#fff') {
+  dot(cx, cy, r, col);
+  ctx.save(); ctx.strokeStyle = mark; ctx.lineWidth = r * 0.28; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.45, cy + r * 0.02); ctx.lineTo(cx - r * 0.12, cy + r * 0.35); ctx.lineTo(cx + r * 0.48, cy - r * 0.32); ctx.stroke(); ctx.restore();
+}
+function iconCross(cx, cy, r, col) {
+  dot(cx, cy, r, col);
+  ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = r * 0.28; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.38, cy - r * 0.38); ctx.lineTo(cx + r * 0.38, cy + r * 0.38);
+  ctx.moveTo(cx + r * 0.38, cy - r * 0.38); ctx.lineTo(cx - r * 0.38, cy + r * 0.38); ctx.stroke(); ctx.restore();
+}
+function iconChat(cx, cy, s, col, check = true) {
+  const w = s * 1.05, h = s * 0.74, x = cx - w / 2, y = cy - h / 2 - s * 0.06;
+  ctx.save(); ctx.fillStyle = col;
+  rr(x, y, w, h, s * 0.16); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x + w * 0.2, y + h - 1); ctx.lineTo(x + w * 0.14, y + h + s * 0.2); ctx.lineTo(x + w * 0.42, y + h - 1); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if (check) {
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = s * 0.09; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.2, y + h * 0.52); ctx.lineTo(cx - s * 0.05, y + h * 0.7); ctx.lineTo(cx + s * 0.22, y + h * 0.3); ctx.stroke(); ctx.restore();
+  }
+}
+function iconChunks(cx, cy, s, col) {
+  for (let i = 0; i < 3; i++) {
+    A(1 - i * 0.22, () => box(cx - s * 0.55 + i * s * 0.06, cy - s * 0.42 + i * s * 0.3, s * 1.0, s * 0.22, { r: s * 0.06, fill: col, stroke: null, shadow: false }));
+  }
+}
+function iconScissors(cx, cy, s, col, open = 0.5) {
+  ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = col; ctx.lineWidth = s * 0.1; ctx.lineCap = 'round';
+  const a = 0.12 + open * 0.22;
+  ctx.beginPath(); ctx.arc(-s * 0.34, -s * 0.2, s * 0.14, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-s * 0.34, s * 0.2, s * 0.14, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s * 0.22, -s * 0.12); ctx.lineTo(s * 0.5, s * a); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-s * 0.22, s * 0.12); ctx.lineTo(s * 0.5, -s * a); ctx.stroke();
+  ctx.restore();
+}
+function iconRefresh(cx, cy, s, col) {
+  ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = s * 0.1; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy, s * 0.34, -Math.PI * 0.15, Math.PI * 1.35); ctx.stroke();
+  const ex = cx + Math.cos(-Math.PI * 0.15) * s * 0.34, ey = cy + Math.sin(-Math.PI * 0.15) * s * 0.34;
+  ctx.beginPath(); ctx.moveTo(ex + s * 0.16, ey - s * 0.02); ctx.lineTo(ex - s * 0.04, ey - s * 0.2); ctx.lineTo(ex - s * 0.06, ey + s * 0.1); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function stepIcon(kind, cx, cy, s, col) {
+  switch (kind) {
+    case 'sources': {
+      const m = s * 0.5, g = s * 0.62;
+      iconDoc(cx - g * 1.5, cy, m, C.blue); iconPdf(cx - g * 0.5, cy, m); iconGlobe(cx + g * 0.5, cy, m * 0.9, C.teal); iconDB(cx + g * 1.5, cy, m, C.violet);
+      break;
+    }
+    case 'chunks': iconChunks(cx, cy, s, col); break;
+    case 'net': iconNet(cx, cy, s, C.violet); break;
+    case 'db': iconDB(cx, cy, s, col, { fill: C.blueSoft }); break;
+    case 'user': iconUser(cx, cy, s, col); break;
+    case 'search': iconSearch(cx, cy, s, col); break;
+    case 'chip': iconChip(cx - s * 0.12, cy, s * 0.72, C.ink, 'LLM'); iconDoc(cx + s * 0.42, cy + s * 0.12, s * 0.5, col, { fill: C.greenSoft }); break;
+    case 'chat': iconChat(cx, cy, s, col); break;
+  }
+}
+
+/* ---------- datos del ejemplo ---------- */
+const ART = [
+  { n: 10, title: 'Asistencia', text: 'La asistencia mínima a clase es del 80 % de las sesiones.', cl: 0, p: [0.24, 0.28], side: 1, vec: '[0.31, 0.77, −0.12, …]', page: 3 },
+  { n: 11, title: 'Exámenes', text: 'Los exámenes finales se celebran en junio; la recuperación, en julio.', cl: 1, p: [0.55, 0.53], side: -1, vec: '[0.18, −0.36, 0.64, …]', page: 3 },
+  { n: 12, title: 'Entregas con retraso', text: 'Los trabajos se aceptan hasta 3 días después de la fecha límite.', cl: 1, p: [0.62, 0.38], side: -1, vec: '[0.12, −0.48, 0.91, …]', page: 4 },
+  { n: 13, title: 'Penalización', text: 'Cada día de retraso resta un 10 % de la nota del trabajo.', cl: 1, p: [0.71, 0.29], side: 1, vec: '[0.09, −0.52, 0.83, …]', page: 4 },
+  { n: 14, title: 'Biblioteca', text: 'La biblioteca abre de lunes a viernes, de 8:00 a 21:00.', cl: 2, p: [0.2, 0.77], side: 1, vec: '[−0.71, 0.22, 0.05, …]', page: 6 },
+  { n: 15, title: 'Uso de IA', text: 'El uso de herramientas de IA en los trabajos debe declararse.', cl: 3, p: [0.8, 0.75], side: -1, vec: '[0.44, 0.10, −0.58, …]', page: 7 }
+];
+const CL = [
+  { name: 'Asistencia', col: C.teal, c: [0.24, 0.28], r: [0.085, 0.13] },
+  { name: 'Evaluación y entregas', col: C.violet, c: [0.63, 0.41], r: [0.135, 0.24] },
+  { name: 'Servicios', col: C.pink, c: [0.2, 0.77], r: [0.085, 0.13] },
+  { name: 'Uso de IA', col: C.brown, c: [0.8, 0.75], r: [0.085, 0.13] }
+];
+const Q = { p: [0.655, 0.33], text: '¿Hasta cuándo puedo entregar un trabajo con retraso?', vec: '[0.10, −0.45, 0.88, …]' };
+const RET = [{ a: 2, s: 0.91 }, { a: 3, s: 0.84 }, { a: 1, s: 0.62 }];
+let seed = 11;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const BG = [];
+while (BG.length < 26) {
+  const p = [0.05 + rnd() * 0.9, 0.08 + rnd() * 0.86];
+  const near = [Q.p, ...ART.map(a => a.p)].some(q => Math.hypot(q[0] - p[0], (q[1] - p[1]) * 0.8) < 0.11);
+  if (!near && p[0] > 0.04 && !(p[0] < 0.42 && p[1] < 0.13)) BG.push(p);
+}
+const sp = (R, p) => [R.x + p[0] * R.w, R.y + p[1] * R.h];
+
+function plotFrame(R, o = {}) {
+  box(R.x, R.y, R.w, R.h, { r: 20, fill: '#fff', stroke: C.line, shadow: false });
+  ctx.save(); ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i++) { const gx = R.x + R.w * i / 8; ctx.beginPath(); ctx.moveTo(gx, R.y + 10); ctx.lineTo(gx, R.y + R.h - 10); ctx.stroke(); }
+  for (let i = 1; i < 5; i++) { const gy = R.y + R.h * i / 5; ctx.beginPath(); ctx.moveTo(R.x + 10, gy); ctx.lineTo(R.x + R.w - 10, gy); ctx.stroke(); }
+  ctx.restore();
+  if (o.title !== false) text(o.title || 'Espacio de embeddings (proyección en 2D)', R.x + 20, R.y + 32, { size: 18, weight: 600, color: C.muted });
+}
+function bgDots(R, a) { A(a, () => BG.forEach(p => { const [x, y] = sp(R, p); dot(x, y, 4.5, '#C3CDDB'); })); }
+function halos(R, a, labels = true) {
+  A(a, () => CL.forEach(c => {
+    const [x, y] = sp(R, c.c), rx = c.r[0] * R.w, ry = c.r[1] * R.h;
+    ctx.save(); ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.fillStyle = c.col; ctx.globalAlpha *= 0.09; ctx.fill(); ctx.restore();
+    ctx.save(); ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, TAU);
+    ctx.strokeStyle = c.col; ctx.globalAlpha *= 0.55; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+    if (labels) text(c.name, x, y - ry - 10, { size: 18, weight: 700, color: c.col, align: 'center' });
+  }));
+}
+function artPoint(R, i, a, o = {}) {
+  const art = ART[i]; const [x, y] = sp(R, art.p);
+  const col = o.col || CL[art.cl].col;
+  A(a, () => {
+    const s = o.pop === undefined ? 1 : o.pop;
+    if (o.ring) { ctx.save(); ctx.beginPath(); ctx.arc(x, y, 17, 0, TAU); ctx.strokeStyle = o.ringCol || C.violet; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); }
+    dot(x, y, 9 * s, col, { ring: true });
+    if (o.label !== false) {
+      const lab = o.labelText || ('Art. ' + art.n);
+      const side = o.side || art.side;
+      text(lab, x + side * (o.ring ? 26 : 16), y + 6, { size: o.lsize || 19, weight: 700, color: o.lcol || C.ink, align: side > 0 ? 'left' : 'right' });
+    }
+  });
+  return [x, y];
+}
+
+/* ---------- elementos comunes ---------- */
+function header(phase, title, t) {
+  const a = P(t, 0, 0.5);
+  A(a, () => {
+    if (phase) {
+      const col = phase === 1 ? C.blue : C.green, soft = phase === 1 ? C.blueSoft : C.greenSoft;
+      const lab = phase === 1 ? 'FASE 1 · INGESTA DE DOCUMENTOS' : 'FASE 2 · CONSULTA Y GENERACIÓN';
+      pill(lab, 60, 40, { size: 17, fill: soft, color: col });
+    }
+    text(title, 60, 124, { size: 42, weight: 700, fam: 'display' });
+  });
+}
+const RAGB = [{ l: 'R', w: 'Recuperar', c: C.violet }, { l: 'A', w: 'Aumentar', c: C.amber }, { l: 'G', w: 'Generar', c: C.green }];
+function ragBadges(state, a = 1) {
+  A(a, () => {
+    let x = W - 60; const y = 40, h = 46;
+    for (let i = 2; i >= 0; i--) {
+      const b = RAGB[i], on = state[i];
+      font(19, 700, 'display');
+      const w = ctx.measureText(b.w).width + 74; x -= w;
+      box(x, y, w, h, { r: 12, fill: '#fff', stroke: C.line, shadow: false });
+      A(on, () => box(x, y, w, h, { r: 12, fill: b.c, stroke: null, shadow: false }));
+      box(x + 8, y + 8, 30, 30, { r: 8, fill: on > 0.5 ? 'rgba(255,255,255,0.25)' : C.panel, stroke: null, shadow: false });
+      text(b.l, x + 23, y + h / 2 + 1, { size: 19, weight: 800, fam: 'display', color: on > 0.5 ? '#fff' : b.c, align: 'center', base: 'middle' });
+      text(b.w, x + 48, y + h / 2 + 1, { size: 19, weight: 700, fam: 'display', color: on > 0.5 ? '#fff' : C.muted, base: 'middle' });
+      x -= 10;
+    }
+  });
+}
+function vectorCells(x, y, vals, o = {}) {
+  const { cw = 80, ch = 58, gap = 6, reveal = 1, col = C.violet, size = 21 } = o;
+  const n = vals.length;
+  text('[', x - 6, y + ch / 2 + 2, { size: 54, weight: 500, fam: 'mono', color: C.faint, align: 'right', base: 'middle' });
+  for (let i = 0; i < n; i++) {
+    const a = clamp(reveal * n - i);
+    if (a <= 0) continue;
+    A(a, () => {
+      const cx = x + i * (cw + gap);
+      box(cx, y + (1 - a) * 10, cw, ch, { r: 10, fill: vals[i] === '…' ? C.panel : C.violetSoft, stroke: null, shadow: false });
+      text(vals[i], cx + cw / 2, y + ch / 2 + 2 + (1 - a) * 10, { size, weight: 700, fam: 'mono', color: vals[i] === '…' ? C.muted : col, align: 'center', base: 'middle' });
+    });
+  }
+  if (reveal >= 0.999) text(']', x + n * (cw + gap) - gap + 6, y + ch / 2 + 2, { size: 54, weight: 500, fam: 'mono', color: C.faint, base: 'middle' });
+  return x + n * (cw + gap) - gap;
+}
+function modelBox(x, y, w, h, t, act, label = 'Modelo de embeddings', sub = null) {
+  box(x, y, w, h, { r: 18, fill: '#fff', stroke: C.violet, lw: 2.5 });
+  iconNet(x + w / 2, y + h * 0.4, h * 0.46, C.violet, act);
+  text(label, x + w / 2, y + h - (sub ? 40 : 24), { size: 19, weight: 700, fam: 'display', color: C.violet, align: 'center' });
+  if (sub) text(sub, x + w / 2, y + h - 16, { size: 17, weight: 600, color: C.muted, align: 'center' });
+}
+function chunkCard(x, y, w, h, i, o = {}) {
+  const art = ART[i]; const col = o.col || C.blue;
+  box(x, y, w, h, { r: 16, fill: '#fff', stroke: o.stroke || C.line, lw: 2 });
+  box(x, y + 14, 6, h - 28, { r: 3, fill: col, stroke: null, shadow: false });
+  if (o.tag) pill(o.tag, x + 22, y + 16, { size: 15, fill: o.soft || C.blueSoft, color: col });
+  const ty = o.tag ? y + 78 : y + 40;
+  text('Art. ' + art.n + ' · ' + art.title, x + 24, ty, { size: o.tsize || 22, weight: 700, fam: 'display' });
+  para(art.text, x + 24, ty + 32, w - 48, { size: o.bsize || 20, color: C.muted, maxLines: o.maxLines || 2, lh: 1.3 });
+}
+
+/* ---------- pasos del diagrama general ---------- */
+const STEPS = [
+  { label: 'Fuentes de conocimiento', icon: 'sources', def: 'Documentos, PDF, webs y bases de datos' },
+  { label: 'Chunking', icon: 'chunks', def: 'Dividir el texto en fragmentos' },
+  { label: 'Embeddings', icon: 'net', def: 'Convertir cada fragmento en un vector' },
+  { label: 'Base de datos vectorial', icon: 'db', def: 'Guardar vector + texto + metadatos' },
+  { label: 'Pregunta del usuario', icon: 'user', def: 'También se convierte en vector' },
+  { label: 'Recuperación de fragmentos', icon: 'search', def: 'Buscar los k fragmentos más parecidos' },
+  { label: 'LLM + contexto', icon: 'chip', def: 'Instrucciones + contexto + pregunta' },
+  { label: 'Respuesta fundamentada', icon: 'chat', def: 'Basada en tus documentos, con fuentes' }
+];
+const BX = [110, 470, 830, 1190], BW = 280;
+function stepBox(i, x, y, w, h, o = {}) {
+  const st = STEPS[i]; const lane = i < 4 ? 1 : 2;
+  const col = lane === 1 ? C.blue : C.green;
+  const hl = o.hl || 0;
+  scaleAt(x + w / 2, y + h / 2, 1 + 0.05 * (o.pulse || 0), () => {
+    box(x, y, w, h, { r: 18, fill: '#fff', stroke: hl > 0 ? col : C.line, lw: 2 + 2 * hl });
+    if (o.pulse > 0) { ctx.save(); ctx.globalAlpha *= o.pulse * 0.6; ctx.shadowColor = col; ctx.shadowBlur = 30; rr(x, y, w, h, 18); ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); }
+    const ic = st.icon === 'sources' ? h * 0.36 : h * 0.34;
+    stepIcon(st.icon, x + w / 2, y + h * 0.37, ic, col);
+    font(22, 700, 'display');
+    const ls = wrap(st.label, w - 30);
+    const by = y + h * 0.78 - (ls.length - 1) * 13;
+    ls.forEach((l, k) => text(l, x + w / 2, by + k * 26, { size: 22, weight: 700, fam: 'display', align: 'center' }));
+  });
+}
+function lane(n, x, y, w, h, a, sub) {
+  const col = n === 1 ? C.blue : C.green, soft = n === 1 ? C.blueSoft : C.greenSoft, mid = n === 1 ? C.blueMid : C.greenMid;
+  A(a, () => {
+    box(x, y, w, h, { r: 26, fill: soft, stroke: mid, lw: 2, shadow: false });
+    text(n === 1 ? '1 · Ingesta de documentos' : '2 · Consulta y generación', x + 30, y + 42, { size: 24, weight: 700, fam: 'display', color: col });
+    if (sub) text(sub, x + w - 30, y + 42, { size: 20, weight: 600, color: C.muted, align: 'right' });
+  });
+}
+
+/* ---------- escenas ---------- */
+const scenes = [];
+
+/* 0 · Título */
+scenes.push({
+  short: 'Qué es RAG', phase: 0, dur: 9,
+  caps: [[0, 'RAG significa Retrieval-Augmented Generation: generación aumentada por recuperación.'], [4.5, 'Veremos paso a paso cómo un modelo de lenguaje responde usando tus propios documentos.']],
+  draw(t) {
+    text('¿Qué es RAG?', W / 2, 205, { size: 60, weight: 800, fam: 'display', align: 'center' });
+    const L = ['R', 'A', 'G'], EN = ['Retrieval', 'Augmented', 'Generation'], ES = ['Recuperación', 'Aumentada', 'Generación'];
+    for (let i = 0; i < 3; i++) {
+      const cx = 400 + i * 400; const s = 1 + 0.1 * bump(t, 0.8 + i * 0.6, 1.5 + i * 0.6);
+      scaleAt(cx, 400, s, () => text(L[i], cx, 470, { size: 190, weight: 800, fam: 'display', align: 'center' }));
+      box(cx - 70, 498, 140, 10, { r: 5, fill: RAGB[i].c, stroke: null, shadow: false });
+      text(EN[i], cx, 566, { size: 36, weight: 700, fam: 'display', align: 'center', color: RAGB[i].c === C.amber ? C.amberInk : RAGB[i].c });
+      text(ES[i], cx, 610, { size: 30, align: 'center', color: C.muted });
+    }
+    text('Cómo un modelo de lenguaje responde usando tus propios documentos', W / 2, 700, { size: 30, weight: 600, align: 'center', color: C.ink });
+    A(P(t, 4.5, 5.3), () => {
+      font(20, 700, 'display');
+      const w1 = ctx.measureText('Fase 1 · Preparar los documentos').width + 36;
+      const w2 = ctx.measureText('Fase 2 · Responder preguntas').width + 36;
+      const x0 = W / 2 - (w1 + w2 + 20) / 2;
+      pill('Fase 1 · Preparar los documentos', x0, 750, { size: 20, fill: C.blueSoft, color: C.blue });
+      pill('Fase 2 · Responder preguntas', x0 + w1 + 20, 750, { size: 20, fill: C.greenSoft, color: C.green });
+    });
+  }
+});
+
+/* 1 · El problema */
+scenes.push({
+  short: 'El problema', phase: 0, dur: 19,
+  caps: [[0, 'Un modelo de lenguaje (LLM) solo sabe lo que aprendió durante su entrenamiento.'], [4.6, 'No conoce el reglamento de nuestro centro. Si le preguntamos, puede inventarse una respuesta convincente: una alucinación.'], [11, 'La idea de RAG: antes de responder, buscar la información relevante en nuestros documentos y dársela al modelo.']],
+  draw(t) {
+    header(0, 'El problema: el modelo no conoce tus documentos', t);
+    const idea = P(t, 11, 12.2);
+    A(P(t, 0.2, 0.9), () => { iconUser(210, 480, 130, C.ink, { cap: true }); text('Alumna', 210, 590, { size: 24, weight: 600, align: 'center', color: C.muted }); });
+    const think = clamp((t - 7) / 0.3) * clamp((8.6 - t) / 0.3);
+    const think2 = clamp((t - 14.6) / 0.3) * clamp((15.6 - t) / 0.3);
+    A(P(t, 0.5, 1.2), () => {
+      scaleAt(800, 470, 1 + 0.04 * Math.sin(t * 12) * Math.max(think, think2), () => iconChip(800, 470, 170, C.ink, 'LLM', idea * 0.6));
+      text('Modelo de lenguaje', 800, 608, { size: 24, weight: 600, align: 'center', color: C.muted });
+    });
+    A(P(t, 1.2, 2.0), () => {
+      box(600, 158, 400, 118, { fill: '#fff' });
+      text('Datos de entrenamiento', 800, 202, { size: 25, weight: 700, fam: 'display', align: 'center' });
+      text('libros · webs · artículos… hasta una fecha', 800, 244, { size: 21, align: 'center', color: C.muted });
+    });
+    arrow(800, 280, 800, 366, { color: C.faint, p: P(t, 1.8, 2.6) });
+
+    // pregunta
+    A(P(t, 4.6, 5.3), () => {
+      bubble(100, 236, 470, 132, { fill: C.amberSoft, stroke: C.amber, tail: { side: 'bottom', at: 190, tip: [180, 402], width: 36 } });
+      para(Q.text, 126, 288, 420, { size: 27, weight: 600, reveal: P(t, 4.8, 6.0, lin) });
+    });
+    { const u = P(t, 6.0, 7.0); if (u > 0 && u < 1) { const p = pointAlong([[570, 330], [705, 430]], u); dot(p[0], p[1], 10, C.amber, { glow: 16 }); } }
+
+    // documentos propios
+    A(P(t, 6.2, 7.0), () => {
+      iconDoc(1100, 750, 90, C.blue, { fill: C.blueSoft });
+      text('Reglamento académico', 1100, 830, { size: 21, weight: 700, align: 'center' });
+      text('(tus documentos)', 1100, 856, { size: 19, align: 'center', color: C.muted });
+    });
+    A(P(t, 6.6, 7.4) * (1 - idea), () => {
+      ctx.save(); ctx.setLineDash([8, 8]); ctx.strokeStyle = C.red; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(1048, 718); ctx.lineTo(905, 548); ctx.stroke(); ctx.restore();
+      iconCross(976, 633, 18, C.red);
+      text('no tiene acceso', 1000, 640, { size: 19, weight: 700, color: C.red });
+    });
+    // conexión RAG
+    A(idea, () => {
+      arrow(1048, 718, 908, 552, { color: C.green, lw: 5, head: 18, p: P(t, 11.3, 12.4) });
+      for (let k = 0; k < 3; k++) {
+        const u = ((t - 12.4) * 0.6 + k / 3) % 1;
+        if (t > 12.4) { const p = pointAlong([[1048, 718], [915, 560]], u); dot(p[0], p[1], 6, C.green); }
+      }
+      pill('RAG le da la información relevante', 1004, 590, { size: 17, fill: C.greenSoft, color: C.green });
+    });
+
+    // respuesta inventada
+    A(P(t, 8.6, 9.4) * (1 - idea), () => {
+      bubble(1050, 345, 460, 128, { fill: '#fff', stroke: C.line, tail: { side: 'left', at: 410, tip: [1000, 430], width: 30 } });
+      para('Normalmente tienes una semana de margen, sin penalización.', 1076, 394, 410, { size: 26, weight: 600, reveal: P(t, 8.8, 9.8, lin) });
+    });
+    A(P(t, 9.8, 10.2) * (1 - idea), () => {
+      const s = lerp(1.4, 1, P(t, 9.8, 10.2, eout));
+      ctx.save(); ctx.translate(1300, 530); ctx.rotate(-0.07); ctx.scale(s, s);
+      box(-130, -30, 260, 60, { r: 10, fill: 'rgba(255,255,255,0.9)', stroke: C.red, lw: 4, shadow: false });
+      text('¿INVENTADO?', 0, 2, { size: 28, weight: 800, fam: 'display', color: C.red, align: 'center', base: 'middle' });
+      ctx.restore();
+      text('Alucinación: suena convincente, pero es falso.', 1280, 600, { size: 21, weight: 600, color: C.red, align: 'center' });
+    });
+    // respuesta correcta
+    A(P(t, 15.4, 16.2), () => {
+      bubble(1050, 345, 460, 128, { fill: '#fff', stroke: C.green, lw: 3, tail: { side: 'left', at: 410, tip: [1000, 430], width: 30 } });
+      para('Hasta 3 días después de la fecha límite, según el Art. 12.', 1076, 394, 400, { size: 26, weight: 600, reveal: P(t, 15.6, 16.8, lin) });
+      iconCheck(1500, 350, 22, C.green);
+    });
+  }
+});
+
+/* 2 · Las dos fases */
+scenes.push({
+  short: 'Las dos fases', phase: 0, dur: 15,
+  caps: [[0, 'Un sistema RAG trabaja en dos fases.'], [2.4, 'Fase 1, ingesta: preparamos los documentos y construimos la base de conocimiento. Se hace antes de recibir preguntas.'], [8.6, 'Fase 2, consulta y generación: ocurre cada vez que alguien hace una pregunta.']],
+  draw(t) {
+    header(0, 'Un sistema RAG tiene dos fases', t);
+    const dim1 = 1 - 0.45 * P(t, 8.6, 9.2) * (1 - P(t, 12.2, 12.8));
+    const dim2 = 0.45 + 0.55 * P(t, 8.6, 9.2);
+    A(dim1, () => {
+      lane(1, 60, 158, 1480, 300, P(t, 0.5, 1.1), 'construye la base de conocimiento · se hace antes');
+      for (let i = 0; i < 4; i++) {
+        const a = P(t, 2.8 + i * 0.8, 3.3 + i * 0.8, eout);
+        A(a, () => scaleAt(BX[i] + BW / 2, 330, lerp(0.85, 1, a), () => stepBox(i, BX[i], 240, BW, 170, { pulse: bump(t, 2.8 + i * 0.8, 3.8 + i * 0.8) })));
+        if (i < 3) arrow(BX[i] + BW + 10, 325, BX[i + 1] - 10, 325, { color: C.blue, lw: 3.5, p: P(t, 3.3 + i * 0.8, 3.7 + i * 0.8) });
+      }
+    });
+    A(dim2, () => {
+      lane(2, 60, 510, 1480, 330, P(t, 0.8, 1.4), 'responde cada pregunta');
+      for (let i = 0; i < 4; i++) {
+        const a = P(t, 9.2 + i * 0.7, 9.7 + i * 0.7, eout);
+        A(a, () => scaleAt(BX[i] + BW / 2, 680, lerp(0.85, 1, a), () => stepBox(4 + i, BX[i], 596, BW, 170, { pulse: bump(t, 9.2 + i * 0.7, 10.2 + i * 0.7) })));
+        if (i < 3) arrow(BX[i] + BW + 10, 681, BX[i + 1] - 10, 681, { color: C.green, lw: 3.5, p: P(t, 9.6 + i * 0.7, 10.0 + i * 0.7) });
+      }
+    });
+    pathArrow([[BX[3] + BW / 2, 412], [BX[3] + BW / 2, 484], [BX[1] + BW / 2, 484], [BX[1] + BW / 2, 590]], { color: C.ink, lw: 3.5, p: P(t, 12.2, 13.6), dash: [10, 8] });
+    A(P(t, 13.2, 13.8), () => pill('la recuperación consulta la base vectorial', 800, 466, { size: 16, fill: '#fff', color: C.ink, stroke: C.line, align: 'center' }));
+  }
+});
+
+/* 3 · Fuentes de conocimiento */
+const SRC = [
+  { l: 'Documentos', s: '.docx, .txt, apuntes', ic: (x, y) => iconDoc(x, y, 58, C.blue) },
+  { l: 'PDF', s: 'manuales, reglamentos', ic: (x, y) => iconPdf(x, y, 58) },
+  { l: 'Páginas web', s: 'HTML, wikis, FAQ', ic: (x, y) => iconGlobe(x, y, 54, C.teal) },
+  { l: 'Bases de datos', s: 'tablas, registros', ic: (x, y) => iconDB(x, y, 58, C.violet) }
+];
+const PAGE = [
+  { k: 'title', s: 'REGLAMENTO ACADÉMICO' },
+  { k: 'noise', s: 'Inicio · Secretaría · Calendario · Contacto' },
+  { k: 'art', a: 0 }, { k: 'art', a: 1 },
+  { k: 'noise', s: 'Página 3 de 12' },
+  { k: 'art', a: 2 }, { k: 'art', a: 3 }, { k: 'art', a: 4 }, { k: 'art', a: 5 },
+  { k: 'noise', s: '© Centro educativo · Aviso legal · Cookies' }
+];
+function artBlock(i, x, y, w, o = {}) {
+  const art = ART[i];
+  text('Art. ' + art.n + '. ' + art.title, x, y + 20, { size: o.hs || 20, weight: 700, color: C.ink });
+  const h = para(art.text, x, y + 46, w, { size: o.bs || 19, color: C.muted, lh: 1.3 });
+  return 30 + h + 8;
+}
+function artBlockH(i, w, bs = 19) { font(bs, 400); return 30 + wrap(ART[i].text, w).length * bs * 1.3 + 8; }
+scenes.push({
+  short: 'Fuentes', phase: 1, dur: 15,
+  caps: [[0, 'Todo empieza con las fuentes de conocimiento: documentos, PDF, páginas web o bases de datos.'], [4.5, 'Extraemos su texto y lo limpiamos: menús, números de página y avisos legales no aportan nada.'], [10.5, 'Como ejemplo, usaremos el reglamento académico de un centro educativo.']],
+  draw(t) {
+    header(1, 'Fuentes de conocimiento', t);
+    const ys = [180, 315, 450, 585];
+    SRC.forEach((s, i) => {
+      const a = P(t, 0.5 + i * 0.4, 1.0 + i * 0.4, eout);
+      A(a, () => {
+        const dx = (1 - a) * -30;
+        box(90 + dx, ys[i], 330, 112, { r: 16 });
+        s.ic(150 + dx, ys[i] + 56);
+        text(s.l, 205 + dx, ys[i] + 50, { size: 24, weight: 700, fam: 'display' });
+        text(s.s, 205 + dx, ys[i] + 80, { size: 19, color: C.muted });
+      });
+      pathArrow([[424, ys[i] + 56], [500, ys[i] + 56], [500, 437], [530, 437]], { color: C.blueMid, lw: 3, p: P(t, 2.6 + i * 0.2, 3.4 + i * 0.2), head: 0.1 });
+    });
+    // partículas (pasan por debajo del extractor)
+    for (let k = 0; k < 24; k++) {
+      const s = k % 4, ts = 3.6 + k * 0.22, u = (t - ts) / 1.5;
+      if (u > 0 && u < 1) {
+        const pts = [[424, ys[s] + 56], [500, ys[s] + 56], [500, 437], [655, 437], [880, 437]];
+        const p = pointAlong(pts, u);
+        box(p[0] - 14, p[1] - 5, 28, 10, { r: 5, fill: [C.blue, C.red, C.teal, C.violet][s], stroke: null, shadow: false });
+      }
+    }
+    A(P(t, 2.4, 3.0), () => {
+      box(530, 372, 250, 130, { r: 18, fill: '#fff', stroke: C.blue, lw: 2.5 });
+      text('Extraer y', 655, 428, { size: 23, weight: 700, fam: 'display', align: 'center', color: C.blue });
+      text('limpiar texto', 655, 458, { size: 23, weight: 700, fam: 'display', align: 'center', color: C.blue });
+    });
+    arrow(784, 437, 870, 437, { color: C.blue, lw: 3.5, p: P(t, 3.2, 3.7) });
+    // página
+    const pa = P(t, 3.4, 4.0);
+    A(pa, () => {
+      box(880, 162, 630, 690, { r: 14 });
+      let y = 200; const x = 912, w = 566;
+      const strike = P(t, 9.4, 10.0), coll = P(t, 10.5, 11.5);
+      PAGE.forEach((b, i) => {
+        const a = P(t, 4.2 + i * 0.45, 4.7 + i * 0.45);
+        if (b.k === 'title') { A(a, () => text(b.s, x, y + 26, { size: 24, weight: 800, fam: 'display' })); y += 52; return; }
+        if (b.k === 'noise') {
+          const h = 38 * (1 - coll);
+          A(a * (1 - coll), () => {
+            const col = strike > 0 ? C.red : C.faint;
+            text(b.s, x, y + 24, { size: 18, weight: 600, color: col, style: 'italic' });
+            if (strike > 0) { font(18, 600, 'body', 'italic'); const tw = ctx.measureText(b.s).width; ctx.save(); ctx.strokeStyle = C.red; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x - 4, y + 18); ctx.lineTo(x - 4 + (tw + 8) * strike, y + 18); ctx.stroke(); ctx.restore(); }
+          });
+          y += h; return;
+        }
+        let hgt = artBlockH(b.a, w);
+        A(a, () => artBlock(b.a, x, y, w));
+        y += hgt;
+      });
+    });
+    A(P(t, 11.6, 12.3), () => {
+      pill('Texto limpio', 1500, 146, { size: 18, fill: C.green, color: '#fff', align: 'right' });
+      pill('Nuestro ejemplo: reglamento académico.pdf', 880, 146, { size: 18, fill: C.blue, color: '#fff' });
+    });
+  }
+});
+
+/* 4 · Chunking */
+const GRID = [[650, 172], [1100, 172], [650, 362], [1100, 362], [650, 552], [1100, 552]];
+const GW = 420, GH = 170;
+function docLayout() {
+  const x = 120, w = 440; let y = 170 + 28 + 44; const out = [];
+  ART.forEach((a, i) => { const h = artBlockH(i, w); out.push({ y, h }); y += h + 10; });
+  return out;
+}
+scenes.push({
+  short: 'Chunking', phase: 1, dur: 24,
+  caps: [[0, 'Chunking es dividir cada documento en fragmentos más pequeños, llamados chunks.'], [5, 'Así la búsqueda es más precisa, y el modelo recibe solo el texto que necesita.'], [11.5, 'A menudo los fragmentos se solapan un poco, para no cortar una idea por la mitad.'], [17.5, 'El tamaño importa: si es muy pequeño se pierde contexto; si es muy grande, se mezclan temas.']],
+  draw(t) {
+    header(1, 'Chunking: dividir en fragmentos', t);
+    const L = docLayout();
+    const docA = 1 - P(t, 11.0, 11.8);
+    const top = 170, bottom = L[5].y + L[5].h + 18;
+    // documento
+    A(docA, () => {
+      box(90, top, 500, bottom - top, { r: 14 });
+      text('REGLAMENTO ACADÉMICO', 120, top + 44, { size: 22, weight: 800, fam: 'display' });
+      const cutY = lerp(top + 54, bottom, P(t, 1.2, 4.4, lin));
+      if (t > 1.2 && t < 4.6) { ctx.save(); const g = ctx.createLinearGradient(0, cutY - 40, 0, cutY); g.addColorStop(0, 'rgba(47,111,237,0)'); g.addColorStop(1, 'rgba(47,111,237,0.18)'); ctx.fillStyle = g; ctx.fillRect(92, cutY - 40, 496, 40); ctx.fillStyle = C.blue; ctx.fillRect(92, cutY - 2, 496, 3); ctx.restore(); }
+      L.forEach((b, i) => {
+        const fly = P(t, 5.0 + i * 0.45, 6.1 + i * 0.45);
+        A(fly > 0 ? 0.25 : 1, () => artBlock(i, 120, b.y, 440));
+        const by = b.y - 6;
+        if (i > 0 && cutY > by) {
+          ctx.save(); ctx.setLineDash([10, 7]); ctx.strokeStyle = C.blue; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(80, by); ctx.lineTo(600, by); ctx.stroke(); ctx.restore();
+          iconScissors(616, by, 26, C.blue, cutY - by < 40 ? 0.5 + 0.5 * Math.sin(t * 20) : 0.2);
+        }
+      });
+    });
+    // fragmentos hacia la cuadrícula
+    L.forEach((b, i) => {
+      const fly = P(t, 5.0 + i * 0.45, 6.1 + i * 0.45);
+      if (fly <= 0) return;
+      const [gx, gy] = GRID[i];
+      const s = lerp(440 / GW, 1, fly);
+      const x = lerp(104, gx, fly), y = lerp(b.y - 6, gy, fly);
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+      A(lerp(0.4, 1, fly), () => chunkCard(0, 0, GW, GH, i, { tag: 'Fragmento ' + (i + 1) }));
+      ctx.restore();
+    });
+    // solapamiento
+    A(P(t, 11.8, 12.6), () => {
+      box(90, 172, 500, 370, { r: 16, fill: '#fff' });
+      text('Solapamiento (overlap)', 116, 214, { size: 24, weight: 700, fam: 'display' });
+      para('Si cortamos por tamaño, repetimos un trozo entre fragmentos vecinos:', 116, 246, 450, { size: 19, color: C.muted });
+      const hlA = P(t, 13.4, 14.2);
+      text('Fragmento A', 116, 318, { size: 16, weight: 700, color: C.blue });
+      box(112, 326, 456, 88, { r: 10, fill: C.panel, stroke: null, shadow: false });
+      richPara([['…se aceptan hasta 3 días después', false], ['de la fecha límite. Cada día de retraso', true]], 126, 356, 430, { size: 20, hlA });
+      text('Fragmento B', 116, 446, { size: 16, weight: 700, color: C.blue });
+      box(112, 454, 456, 70, { r: 10, fill: C.panel, stroke: null, shadow: false });
+      richPara([['de la fecha límite. Cada día de retraso', true], ['resta un 10 % de la nota…', false]], 126, 484, 430, { size: 20, hlA });
+    });
+    A(P(t, 15.0, 15.8), () => {
+      box(90, 562, 500, 160, { r: 16, fill: C.blueSoft, stroke: null, shadow: false });
+      text('Valores orientativos', 116, 600, { size: 20, weight: 700, fam: 'display', color: C.blue });
+      text('Tamaño: 200–1000 tokens', 116, 640, { size: 21, weight: 700 });
+      text('Solapamiento: 10–20 %', 116, 674, { size: 21, weight: 700 });
+      text('token ≈ trozo de palabra', 116, 706, { size: 18, color: C.muted });
+    });
+    // demasiado pequeño / grande
+    A(P(t, 17.6, 18.4), () => {
+      box(650, 750, 420, 98, { r: 14, fill: C.redSoft, stroke: null, shadow: false });
+      text('Muy pequeño', 674, 788, { size: 21, weight: 700, fam: 'display', color: C.red });
+      text('«hasta 3 días» … ¿3 días para qué?', 674, 822, { size: 19, color: C.ink });
+    });
+    A(P(t, 19.2, 20.0), () => {
+      box(1100, 750, 420, 98, { r: 14, fill: C.amberSoft, stroke: null, shadow: false });
+      text('Muy grande', 1124, 788, { size: 21, weight: 700, fam: 'display', color: C.amberInk });
+      text('mezcla temas: exámenes + biblioteca', 1124, 822, { size: 19, color: C.ink });
+    });
+  }
+});
+
+/* 5 · Embeddings */
+const R5 = { x: 560, y: 398, w: 960, h: 452 };
+scenes.push({
+  short: 'Embeddings', phase: 1, dur: 25,
+  caps: [[0, 'Ahora convertimos cada fragmento en un embedding: una lista de números que representa su significado.'], [5.5, 'Un modelo de embeddings lee el texto y devuelve un vector de cientos o miles de números.'], [11, 'Cada vector es un punto en un espacio. Aquí lo dibujamos en 2D para poder verlo.'], [18.5, 'Textos con significado parecido quedan cerca, aunque usen palabras distintas.']],
+  draw(t) {
+    header(1, 'Embeddings: del texto a los números', t);
+    A(P(t, 0.3, 1.0), () => chunkCard(80, 172, 400, 172, 2, { tag: 'Fragmento 3' }));
+    A(P(t, 1.2, 1.9), () => modelBox(560, 172, 260, 172, t, t > 3.6 && t < 5.4 ? ((t - 3.6) / 1.8) * 3 - 0.5 : -1));
+    arrow(484, 258, 554, 258, { color: C.violet, lw: 3.5, p: P(t, 2.0, 2.5) });
+    for (let k = 0; k < 6; k++) { const u = (t - 2.4 - k * 0.18) / 0.9; if (u > 0 && u < 1) { const x = lerp(470, 600, u); box(x - 12, 254 - 5 + (k % 3 - 1) * 12, 24, 10, { r: 5, fill: C.blue, stroke: null, shadow: false }); } }
+    arrow(824, 258, 894, 258, { color: C.violet, lw: 3.5, p: P(t, 5.2, 5.6) });
+    const vals = ['0.12', '−0.48', '0.91', '0.05', '−0.27', '…', '−0.33'];
+    const vfly = P(t, 12.4, 13.6);
+    A(P(t, 5.5, 5.8) * (1 - 0.5 * vfly), () => vectorCells(910, 229, vals, { reveal: P(t, 5.6, 7.6, lin) }));
+    A(P(t, 7.8, 8.4), () => text('768 números (dimensiones): juntos representan el significado', 908, 322, { size: 19, weight: 600, color: C.muted }));
+    // espacio
+    A(P(t, 11, 11.8), () => plotFrame(R5));
+    bgDots(R5, P(t, 17.6, 18.4) * 0.9);
+    halos(R5, P(t, 18.6, 19.6));
+    if (vfly > 0 && vfly < 1) {
+      const [tx, ty] = sp(R5, ART[2].p);
+      const p = [lerp(1210, tx, vfly), lerp(258, ty, vfly) - Math.sin(vfly * Math.PI) * 60];
+      dot(p[0], p[1], 10, C.violet, { glow: 20 });
+    }
+    // otros fragmentos
+    const others = [0, 1, 3, 4, 5];
+    others.forEach((ai, k) => {
+      const y = 380 + k * 90;
+      const a = P(t, 13.6 + k * 0.12, 14.2 + k * 0.12);
+      const go = P(t, 14.6 + k * 0.55, 15.4 + k * 0.55);
+      A(a, () => {
+        box(80, y, 400, 76, { r: 14, fill: '#fff', stroke: C.line });
+        box(80, y + 12, 6, 52, { r: 3, fill: C.blue, stroke: null, shadow: false });
+        text('Art. ' + ART[ai].n + ' · ' + ART[ai].title, 104, y + 33, { size: 20, weight: 700, fam: 'display' });
+        font(17, 400); text(ellipsize(ART[ai].text, 340), 104, y + 60, { size: 17, color: C.muted });
+        if (go >= 1) iconCheck(452, y + 38, 13, C.violet);
+      });
+      if (go > 0 && go < 1) {
+        const [tx, ty] = sp(R5, ART[ai].p);
+        const p = [lerp(480, tx, go), lerp(y + 38, ty, go)];
+        dot(p[0], p[1], 8, C.violet, { glow: 14 });
+      }
+      if (go >= 1) artPoint(R5, ai, 1, { pop: back(P(t, 15.4 + k * 0.55, 15.8 + k * 0.55, lin)) });
+    });
+    if (vfly >= 1) artPoint(R5, 2, 1, { pop: back(P(t, 13.6, 14.0, lin)) });
+    // distancias
+    const d = P(t, 21, 22);
+    A(d, () => {
+      const a = sp(R5, ART[2].p), b = sp(R5, ART[3].p), c = sp(R5, ART[4].p);
+      ctx.save(); ctx.strokeStyle = C.violet; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(lerp(a[0], b[0], d), lerp(a[1], b[1], d)); ctx.stroke(); ctx.restore();
+      pill('cerca = parecido', 1290, 470, { size: 17, fill: C.violetSoft, color: C.violet });
+    });
+    const d2 = P(t, 22.4, 23.4);
+    A(d2, () => {
+      const a = sp(R5, ART[2].p), c = sp(R5, ART[4].p);
+      ctx.save(); ctx.setLineDash([8, 8]); ctx.strokeStyle = C.faint; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(lerp(a[0], c[0], d2), lerp(a[1], c[1], d2)); ctx.stroke(); ctx.restore();
+      pill('lejos = distinto', 900, 672, { size: 17, fill: C.panel, color: C.muted, align: 'center' });
+    });
+  }
+});
+
+/* 6 · Base de datos vectorial */
+const TCOL = [{ k: 'ID', w: 130 }, { k: 'Vector', w: 270 }, { k: 'Texto original', w: 420 }, { k: 'Metadatos', w: 240 }];
+scenes.push({
+  short: 'Base vectorial', phase: 1, dur: 17,
+  caps: [[0, 'Guardamos cada vector en una base de datos vectorial, junto al texto original y sus metadatos.'], [7.5, 'Esta base está optimizada para encontrar muy rápido los vectores más cercanos a uno dado.'], [12.2, 'Con esto termina la ingesta: la base de conocimiento está lista.']],
+  draw(t) {
+    header(1, 'Base de datos vectorial', t);
+    A(P(t, 0.2, 0.8), () => {
+      iconDB(250, 432, 300, C.blue, { fill: C.blueSoft, top: '#fff', wr: 0.82, lwr: 0.014 });
+      text('Base de datos', 250, 630, { size: 25, weight: 700, fam: 'display', align: 'center' });
+      text('vectorial', 250, 662, { size: 25, weight: 700, fam: 'display', align: 'center' });
+    });
+    for (let k = 0; k < 14; k++) {
+      const ts = 0.6 + k * 0.2, u = (t - ts) / 0.8;
+      if (u > 0 && u < 1) {
+        const col = k < 6 ? CL[ART[k].cl].col : '#B8C4D4';
+        const x = 160 + ((k * 53) % 180), y = lerp(150, 300, eio(u));
+        A(1 - P(u, 0.75, 1), () => dot(x, y, 8, col, { ring: true }));
+      }
+    }
+    arrow(388, 432, 462, 432, { color: C.blue, lw: 3.5, p: P(t, 3.0, 3.4) });
+    // tabla
+    const tx = 470, ty = 172;
+    A(P(t, 3.0, 3.5), () => {
+      box(tx, ty, 1060, 50 + 6 * 60, { r: 14, fill: '#fff' });
+      box(tx, ty, 1060, 50, { r: 14, fill: C.blueSoft, stroke: null, shadow: false });
+      ctx.fillStyle = C.blueSoft; ctx.fillRect(tx, ty + 30, 1060, 20);
+      let x = tx;
+      TCOL.forEach(c => { text(c.k, x + 18, ty + 33, { size: 19, weight: 700, fam: 'display', color: C.blue }); x += c.w; });
+    });
+    ART.forEach((art, i) => {
+      const a = P(t, 3.3 + i * 0.45, 3.8 + i * 0.45);
+      A(a, () => {
+        const y = ty + 50 + i * 60; let x = tx + (1 - a) * -20;
+        if (i > 0) { ctx.fillStyle = C.grid; ctx.fillRect(tx + 12, y, 1036, 1.5); }
+        text('frag-0' + (i + 1), x + 18, y + 38, { size: 18, weight: 700, fam: 'mono', color: C.ink }); x += TCOL[0].w;
+        text(art.vec, x + 18, y + 38, { size: 17, weight: 700, fam: 'mono', color: C.violet }); x += TCOL[1].w;
+        font(19, 400); text(ellipsize(art.text, TCOL[2].w - 30), x + 18, y + 38, { size: 19, color: C.ink }); x += TCOL[2].w;
+        text('reglamento.pdf · p. ' + art.page, x + 18, y + 38, { size: 18, color: C.muted });
+      });
+    });
+    A(P(t, 7.6, 8.4), () => {
+      box(tx, 620, 1060, 120, { r: 16, fill: C.violetSoft, stroke: null, shadow: false });
+      for (let k = 0; k < 3; k++) { const rr2 = 14 + ((t * 18 + k * 16) % 48); ctx.save(); ctx.globalAlpha *= 1 - rr2 / 62; ctx.strokeStyle = C.violet; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(tx + 62, 680, rr2, 0, TAU); ctx.stroke(); ctx.restore(); }
+      dot(tx + 62, 680, 8, C.violet);
+      text('Búsqueda por cercanía', tx + 130, 664, { size: 23, weight: 700, fam: 'display', color: C.violet });
+      text('Un índice especial (ANN) encuentra los vectores más cercanos entre millones, en milisegundos.', tx + 130, 700, { size: 20, color: C.ink });
+    });
+    A(P(t, 9.6, 10.3), () => text('Ejemplos: Chroma · FAISS · pgvector · Pinecone · Qdrant · Weaviate', tx, 784, { size: 20, weight: 600, color: C.muted }));
+    A(P(t, 12.2, 12.9), () => {
+      const s = back(P(t, 12.2, 12.8, lin));
+      scaleAt(250, 728, s, () => { box(80, 704, 340, 50, { r: 25, fill: C.blue, stroke: null, shadow: false }); iconCheck(112, 729, 14, '#fff', C.blue); text('Ingesta completada', 136, 730, { size: 21, weight: 700, fam: 'display', color: '#fff', base: 'middle' }); });
+    });
+  }
+});
+
+/* 7 · La pregunta */
+const R7 = { x: 420, y: 392, w: 920, h: 460 };
+scenes.push({
+  short: 'La pregunta', phase: 2, dur: 15,
+  caps: [[0, 'Fase 2. Una alumna pregunta: «¿Hasta cuándo puedo entregar un trabajo con retraso?»'], [5, 'La pregunta pasa por el mismo modelo de embeddings y se convierte en un vector.'], [10, 'Al usar el mismo modelo, la pregunta y los fragmentos quedan en el mismo espacio y se pueden comparar.']],
+  draw(t) {
+    header(2, 'La pregunta también se convierte en vector', t);
+    A(P(t, 0.2, 0.8), () => iconUser(165, 262, 120, C.ink, { cap: true, capCol: C.green }));
+    A(P(t, 0.8, 1.5), () => {
+      bubble(262, 186, 530, 140, { fill: C.amberSoft, stroke: C.amber, tail: { side: 'left', at: 250, tip: [226, 262], width: 30 } });
+      para(Q.text, 290, 240, 480, { size: 27, weight: 600, reveal: P(t, 1.0, 3.0, lin) });
+    });
+    arrow(796, 256, 864, 256, { color: C.amber, lw: 3.5, p: P(t, 5.0, 5.4) });
+    { const u = P(t, 5.0, 6.2); if (u > 0 && u < 1) box(lerp(700, 900, u) - 20, 250, 40, 12, { r: 6, fill: C.amber, stroke: null, shadow: false }); }
+    A(P(t, 4.6, 5.2), () => modelBox(870, 170, 250, 172, t, t > 6.2 && t < 7.4 ? ((t - 6.2) / 1.2) * 3 - 0.5 : -1, 'Modelo de embeddings', '(el mismo de la fase 1)'));
+    arrow(1124, 256, 1180, 256, { color: C.violet, lw: 3.5, p: P(t, 7.2, 7.5) });
+    const fly = P(t, 10.0, 11.2);
+    A(P(t, 7.4, 7.7) * (1 - 0.5 * fly), () => vectorCells(1200, 227, ['0.10', '−0.45', '0.88', '…'], { reveal: P(t, 7.4, 8.6, lin), cw: 74 }));
+    A(P(t, 8.4, 9.0), () => text('la pregunta, como vector', 1196, 318, { size: 19, weight: 600, color: C.muted }));
+    A(P(t, 9.0, 9.8), () => {
+      plotFrame(R7);
+      bgDots(R7, 0.9); halos(R7, 0.8);
+      ART.forEach((a, i) => artPoint(R7, i, 1));
+    });
+    const [qx, qy] = sp(R7, Q.p);
+    if (fly > 0 && fly < 1) { const p = [lerp(1350, qx, fly), lerp(256, qy, fly) - Math.sin(fly * Math.PI) * 50]; star(p[0], p[1], 14, C.amber, { glow: 18 }); }
+    if (fly >= 1) {
+      const r = (t - 11.2) % 1.4;
+      A(1 - r / 1.4, () => { ctx.save(); ctx.strokeStyle = C.amber; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(qx, qy, 16 + r * 30, 0, TAU); ctx.stroke(); ctx.restore(); });
+      star(qx, qy, 17 * back(P(t, 11.2, 11.6, lin)), C.amber);
+      A(P(t, 11.3, 11.8), () => pill('Pregunta', qx + 4, qy - 52, { size: 16, fill: C.amber, color: '#fff', align: 'center' }));
+    }
+    A(P(t, 11.6, 12.4), () => {
+      box(70, 420, 320, 250, { r: 16, fill: '#fff' });
+      text('Compara', 94, 458, { size: 22, weight: 700, fam: 'display' });
+      text('Pregunta', 94, 494, { size: 17, weight: 700, color: C.amberInk });
+      text(Q.vec, 94, 522, { size: 17, weight: 700, fam: 'mono', color: C.ink });
+      text('Art. 12', 94, 560, { size: 17, weight: 700, color: C.violet });
+      text(ART[2].vec, 94, 588, { size: 17, weight: 700, fam: 'mono', color: C.ink });
+      para('Números parecidos → puntos cercanos', 94, 628, 280, { size: 18, weight: 600, color: C.muted });
+    });
+  }
+});
+
+/* 8 · Recuperación */
+const R8 = { x: 70, y: 166, w: 860, h: 688 };
+scenes.push({
+  short: 'Recuperación', phase: 2, dur: 21,
+  caps: [[0, 'Buscamos en la base vectorial los fragmentos más cercanos a la pregunta.'], [5, 'La cercanía se mide, por ejemplo, con la similitud coseno: cuanto más cerca de 1, más parecido el significado.'], [10.8, 'Nos quedamos con los k mejores; aquí, k = 3. Esta es la R de RAG: recuperar.'], [15.5, 'El artículo de la biblioteca queda lejos: no tiene nada que ver con la pregunta.']],
+  draw(t) {
+    header(2, 'Recuperación de los fragmentos relevantes', t);
+    ragBadges([P(t, 10.8, 11.4), 0, 0], P(t, 0, 0.5));
+    plotFrame(R8, { title: 'Base de datos vectorial (espacio de embeddings)' });
+    bgDots(R8, 0.9 - 0.5 * P(t, 4, 5));
+    halos(R8, 0.7 - 0.4 * P(t, 4, 5), false);
+    const [qx, qy] = sp(R8, Q.p);
+    // radar
+    if (t > 0.8 && t < 4.6) for (let k = 0; k < 3; k++) {
+      const u = ((t - 0.8) * 0.7 + k / 3) % 1;
+      A((1 - u) * clamp((4.6 - t) / 0.4), () => { ctx.save(); ctx.strokeStyle = C.amber; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(qx, qy, 20 + u * 220, 0, TAU); ctx.stroke(); ctx.restore(); });
+    }
+    const isTop = i => RET.findIndex(r => r.a === i);
+    ART.forEach((a, i) => {
+      const k = isTop(i);
+      if (k >= 0) {
+        const on = P(t, 2.4 + k * 0.6, 2.9 + k * 0.6);
+        const [px, py] = sp(R8, a.p);
+        A(on, () => { ctx.save(); ctx.strokeStyle = C.violet; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(lerp(qx, px, on), lerp(qy, py, on)); ctx.stroke(); ctx.restore(); });
+        artPoint(R8, i, 1, { ring: on > 0.9, side: a.n === 11 ? 1 : 0, labelText: on > 0.9 ? 'Art. ' + a.n + ' · ' + RET[k].s.toFixed(2).replace('.', ',') : 'Art. ' + a.n, lcol: on > 0.9 ? C.violet : C.ink });
+      } else {
+        const dim = 1 - 0.55 * P(t, 4, 5);
+        artPoint(R8, i, dim, { lcol: C.muted });
+      }
+    });
+    // descartado
+    const d = P(t, 15.5, 16.5);
+    A(d, () => {
+      const [px, py] = sp(R8, ART[4].p);
+      ctx.save(); ctx.setLineDash([8, 8]); ctx.strokeStyle = C.faint; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(lerp(qx, px, d), lerp(qy, py, d)); ctx.stroke(); ctx.restore();
+      A(P(t, 16.4, 17), () => { iconCross(px, py, 13, C.faint); pill('0,12 · no se recupera', px + 24, py + 16, { size: 16, fill: C.panel, color: C.muted }); });
+    });
+    star(qx, qy, 17, C.amber);
+    pill('Pregunta', qx + 4, qy - 50, { size: 16, fill: C.amber, color: '#fff', align: 'center' });
+    // coseno
+    A(P(t, 5.0, 5.8), () => {
+      box(976, 166, 554, 200, { r: 16, fill: '#fff' });
+      const ox = 1012, oy = 336;
+      const a1 = -0.62, a2 = -0.42, L1 = 150, L2 = 140;
+      const sw = P(t, 5.6, 7.0);
+      arrow(ox, oy, ox + Math.cos(a1) * L1, oy + Math.sin(a1) * L1, { color: C.amber, lw: 4, head: 14 });
+      arrow(ox, oy, ox + Math.cos(a2) * L2 * sw, oy + Math.sin(a2) * L2 * sw, { color: C.violet, lw: 4, head: 14, p: sw > 0.05 ? 1 : 0 });
+      ctx.save(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(ox, oy, 52, a1, a2); ctx.stroke(); ctx.restore();
+      text('θ', ox + 66, oy - 30, { size: 20, weight: 700, fam: 'display', color: C.ink });
+      text('pregunta', ox + Math.cos(a1) * L1 - 4, oy + Math.sin(a1) * L1 - 14, { size: 16, weight: 700, color: C.amberInk });
+      A(sw, () => text('Art. 12', ox + Math.cos(a2) * L2 + 8, oy + Math.sin(a2) * L2 + 4, { size: 16, weight: 700, color: C.violet }));
+      text('Similitud coseno', 1218, 208, { size: 23, weight: 700, fam: 'display' });
+      para('Compara la dirección de dos vectores. Ángulo pequeño → similitud cercana a 1.', 1218, 242, 290, { size: 19, color: C.muted });
+    });
+    // top-k
+    A(P(t, 10.8, 11.4), () => text('Top-k = 3 · fragmentos recuperados', 980, 410, { size: 22, weight: 700, fam: 'display', color: C.violet }));
+    RET.forEach((r, k) => {
+      const a = P(t, 11.2 + k * 0.6, 11.8 + k * 0.6, eout);
+      A(a, () => {
+        const x = 976 + (1 - a) * 30, y = 428 + k * 140, w = 554, h = 126;
+        box(x, y, w, h, { r: 16, fill: '#fff', stroke: C.line });
+        dot(x + 36, y + 38, 18, C.violet);
+        text(String(k + 1), x + 36, y + 39, { size: 19, weight: 800, fam: 'display', color: '#fff', align: 'center', base: 'middle' });
+        text('Art. ' + ART[r.a].n + ' · ' + ART[r.a].title, x + 68, y + 45, { size: 21, weight: 700, fam: 'display' });
+        font(18, 400); text(ellipsize(ART[r.a].text, w - 92), x + 68, y + 76, { size: 18, color: C.muted });
+        box(x + 68, y + 96, 360, 10, { r: 5, fill: C.panel, stroke: null, shadow: false });
+        box(x + 68, y + 96, 360 * r.s * P(t, 11.6 + k * 0.6, 12.4 + k * 0.6), 10, { r: 5, fill: C.violet, stroke: null, shadow: false });
+        text(r.s.toFixed(2).replace('.', ','), x + 446, y + 106, { size: 19, weight: 700, fam: 'mono', color: C.violet });
+      });
+    });
+  }
+});
+
+/* 9 · Prompt aumentado */
+const PX = 90, PW = 900;
+scenes.push({
+  short: 'Prompt aumentado', phase: 2, dur: 21,
+  caps: [[0, 'Con lo recuperado construimos el prompt que recibirá el LLM. Tiene tres partes.'], [4, 'Instrucciones: responde solo con el contexto y, si la respuesta no está, dilo.'], [8.8, 'Contexto: los fragmentos recuperados. Esta es la A de RAG: aumentamos el prompt con información.'], [13.8, 'Y la pregunta original. Todo junto se envía al modelo.']],
+  draw(t) {
+    header(2, 'Aumentar el prompt con el contexto', t);
+    ragBadges([1, P(t, 8.8, 9.4), 0], P(t, 0, 0.5));
+    const shrink = P(t, 17.2, 18.6);
+    const chipA = P(t, 16.2, 16.9);
+    // tarjetas recuperadas (derecha)
+    RET.forEach((r, k) => {
+      const go = P(t, 9.2 + k * 0.7, 10.0 + k * 0.7);
+      const y0 = 236 + k * 104;
+      A(P(t, 0.4 + k * 0.2, 1.0 + k * 0.2) * (1 - shrink), () => {
+        if (go > 0) box(1070, y0, 450, 86, { r: 14, fill: 'transparent', stroke: C.line, shadow: false, dash: [8, 6] });
+      });
+    });
+    const flyingCards = () => RET.forEach((r, k) => {
+      const go = P(t, 9.2 + k * 0.7, 10.0 + k * 0.7);
+      const y0 = 236 + k * 104;
+      if (go < 1) A(P(t, 0.4 + k * 0.2, 1.0 + k * 0.2), () => {
+        const x = lerp(1070, 132, go), y = lerp(y0, 448 + k * 64, go), w = lerp(450, 816, go), h = lerp(86, 54, go);
+        box(x, y, w, h, { r: 12, fill: '#fff', stroke: C.greenMid });
+        box(x, y + 10, 5, h - 20, { r: 2.5, fill: C.green, stroke: null, shadow: false });
+        text('Art. ' + ART[r.a].n, x + 20, y + (go > 0.5 ? 34 : 34), { size: 18, weight: 700, fam: 'display', color: C.green });
+        font(18, 400); text(ellipsize(ART[r.a].text, w - 110), x + 92, y + 34, { size: 18, color: C.ink });
+      });
+    });
+    A(P(t, 0.8, 1.4) * (1 - P(t, 13.8, 14.8)), () => {
+      box(1070, 600, 450, 76, { r: 14, fill: C.amberSoft, stroke: C.amber });
+      font(19, 600); text(ellipsize(Q.text, 410), 1090, 645, { size: 19, weight: 600 });
+    });
+    A(P(t, 0.8, 1.4) * (1 - shrink), () => text('Lo que tenemos', 1070, 214, { size: 18, weight: 700, color: C.muted }));
+    // ventana del prompt
+    const cx = lerp(PX + PW / 2, 1290, shrink), cy = lerp(490, 470, shrink);
+    const s = lerp(1, 0.16, shrink);
+    A(P(t, 0.3, 1.0) * (1 - P(t, 18.2, 18.7)), () => {
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-(PX + PW / 2), -490);
+      box(PX, 168, PW, 650, { r: 16, fill: '#fff' });
+      box(PX, 168, PW, 46, { r: 16, fill: C.panel, stroke: null, shadow: false }); ctx.fillStyle = C.panel; ctx.fillRect(PX, 196, PW, 18);
+      [C.red, C.amber, C.green].forEach((c, i) => dot(PX + 26 + i * 22, 191, 6.5, c));
+      text('prompt para el LLM', PX + PW / 2, 198, { size: 17, weight: 700, fam: 'mono', color: C.muted, align: 'center' });
+      A(P(t, 4.0, 4.7), () => {
+        box(PX + 22, 232, PW - 44, 150, { r: 12, fill: C.panel, stroke: null, shadow: false });
+        text('INSTRUCCIONES', PX + 44, 266, { size: 16, weight: 800, fam: 'display', color: C.muted });
+        para('Responde a la pregunta usando solo la información del contexto. Si la respuesta no aparece, di que no lo sabes. Indica en qué artículo te basas.', PX + 44, 300, PW - 92, { size: 21, reveal: P(t, 4.3, 7.0, lin) });
+      });
+      A(P(t, 8.8, 9.4), () => {
+        box(PX + 22, 398, PW - 44, 250, { r: 12, fill: C.greenSoft, stroke: null, shadow: false });
+        text('CONTEXTO · fragmentos recuperados', PX + 44, 432, { size: 16, weight: 800, fam: 'display', color: C.green });
+      });
+      RET.forEach((r, k) => {
+        if (P(t, 9.2 + k * 0.7, 10.0 + k * 0.7) < 1) return;
+        const x = 132, y = 448 + k * 64, w = 816, h = 54;
+        box(x, y, w, h, { r: 12, fill: '#fff', stroke: C.greenMid, shadow: false });
+        box(x, y + 10, 5, h - 20, { r: 2.5, fill: C.green, stroke: null, shadow: false });
+        text('[Art. ' + ART[r.a].n + ']', x + 20, y + 34, { size: 18, weight: 700, fam: 'mono', color: C.green });
+        font(19, 400); text(ellipsize(ART[r.a].text, w - 140), x + 124, y + 34, { size: 19, color: C.ink });
+      });
+      A(P(t, 13.8, 14.6), () => {
+        box(PX + 22, 664, PW - 44, 130, { r: 12, fill: C.amberSoft, stroke: null, shadow: false });
+        text('PREGUNTA', PX + 44, 698, { size: 16, weight: 800, fam: 'display', color: C.amberInk });
+        const qa = P(t, 14.2, 14.9);
+        A(qa, () => text(Q.text, PX + 44 + (1 - qa) * 60, 744, { size: 24, weight: 700 }));
+      });
+      ctx.restore();
+    });
+    flyingCards();
+    // LLM
+    A(chipA, () => {
+      const glow = clamp((t - 18.4) / 0.4);
+      scaleAt(1290, 470, 1 + 0.04 * Math.sin(t * 10) * glow, () => iconChip(1290, 470, 170, C.ink, 'LLM', glow * (0.6 + 0.4 * Math.sin(t * 6))));
+      text(glow > 0 ? 'Procesando el prompt…' : 'LLM', 1290, 608, { size: 23, weight: 700, fam: 'display', align: 'center', color: glow > 0 ? C.green : C.ink });
+    });
+  }
+});
+
+/* 10 · Respuesta */
+const ANSWER = 'Puedes entregarlo hasta 3 días después de la fecha límite. Ten en cuenta que cada día de retraso resta un 10 % de la nota del trabajo.';
+scenes.push({
+  short: 'Respuesta', phase: 2, dur: 17,
+  caps: [[0, 'El LLM genera la respuesta apoyándose en el contexto. Esta es la G de RAG.'], [6.8, 'Es una respuesta fundamentada: se basa en nuestros documentos y cita la fuente, así que se puede comprobar.'], [12, '¿Cambia el reglamento? Basta con actualizar la base de conocimiento; no hay que reentrenar el modelo.']],
+  draw(t) {
+    header(2, 'Respuesta fundamentada', t);
+    ragBadges([1, 1, P(t, 0.4, 1.0)], P(t, 0, 0.5));
+    const g = clamp((2.6 - t) / 0.4);
+    scaleAt(230, 330, 1 + 0.04 * Math.sin(t * 10) * g, () => iconChip(230, 330, 160, C.ink, 'LLM', g * 0.8));
+    text('genera la respuesta', 230, 456, { size: 21, weight: 600, align: 'center', color: C.muted });
+    arrow(330, 330, 420, 330, { color: C.green, lw: 4, p: P(t, 2.2, 2.7) });
+    A(P(t, 2.4, 3.0), () => {
+      bubble(430, 178, 1080, 248, { fill: '#fff', stroke: C.green, lw: 3, tail: { side: 'left', at: 330, tip: [404, 330], width: 30 } });
+      text('Respuesta', 462, 220, { size: 18, weight: 800, fam: 'display', color: C.green });
+      para(ANSWER, 462, 264, 1010, { size: 28, weight: 600, lh: 1.32, reveal: P(t, 2.8, 6.6, lin) });
+    });
+    A(P(t, 6.8, 7.6), () => {
+      const w1 = pill('Fuente: Reglamento académico · Art. 12', 462, 368, { size: 17, fill: C.greenSoft, color: C.green });
+      pill('Art. 13', 462 + w1 + 10, 368, { size: 17, fill: C.greenSoft, color: C.green });
+    });
+    A(P(t, 7.6, 8.2), () => {
+      const s = back(P(t, 7.6, 8.1, lin));
+      scaleAt(1380, 178, s, () => { box(1240, 156, 290, 44, { r: 22, fill: C.green, stroke: null }); iconCheck(1266, 178, 12, '#fff', C.green); text('Fundamentada', 1288, 179, { size: 19, weight: 700, fam: 'display', color: '#fff', base: 'middle' }); });
+    });
+    // comparación
+    A(P(t, 8.6, 9.3), () => {
+      box(90, 492, 700, 170, { r: 16, fill: '#fff', stroke: C.red, lw: 2 });
+      iconCross(128, 532, 15, C.red);
+      text('Sin RAG', 154, 540, { size: 23, weight: 700, fam: 'display', color: C.red });
+      text('«Normalmente tienes una semana, sin penalización.»', 116, 584, { size: 21, style: 'italic', color: C.ink });
+      text('Inventado y sin fuente: no se puede comprobar.', 116, 626, { size: 20, color: C.muted });
+    });
+    A(P(t, 9.3, 10.0), () => {
+      box(810, 492, 700, 170, { r: 16, fill: '#fff', stroke: C.green, lw: 2 });
+      iconCheck(848, 532, 15, C.green);
+      text('Con RAG', 874, 540, { size: 23, weight: 700, fam: 'display', color: C.green });
+      text('Basada en el reglamento real (Art. 12 y 13).', 836, 584, { size: 21, color: C.ink });
+      text('Cita la fuente: cualquiera puede comprobarla.', 836, 626, { size: 20, color: C.muted });
+    });
+    A(P(t, 12, 12.8), () => {
+      box(90, 690, 1420, 120, { r: 16, fill: C.blueSoft, stroke: null, shadow: false });
+      iconRefresh(156, 750, 60, C.blue);
+      text('¿Cambia el reglamento?', 210, 738, { size: 24, weight: 700, fam: 'display', color: C.blue });
+      text('Actualiza los documentos en la base vectorial (fase 1). El modelo no necesita reentrenarse.', 210, 776, { size: 21, color: C.ink });
+    });
+  }
+});
+
+/* 11 · Resumen */
+scenes.push({
+  short: 'Resumen', phase: 0, dur: 19,
+  caps: [[0, 'Repaso. Ingesta: fuentes, chunking, embeddings y base de datos vectorial.'], [6.4, 'Consulta: la pregunta se convierte en vector, se recuperan los fragmentos más parecidos y el LLM responde con ese contexto.'], [12.5, 'Recuperar, aumentar y generar: eso es RAG.']],
+  draw(t) {
+    header(0, 'Resumen', t);
+    ragBadges([P(t, 12.5, 13.0), P(t, 13.2, 13.7), P(t, 13.9, 14.4)], P(t, 0, 0.5));
+    const a0 = P(t, 0.2, 0.8);
+    const L1 = { y: 150, h: 300 }, L2 = { y: 486, h: 300 };
+    A(a0, () => { lane(1, 60, L1.y, 1480, L1.h, 1); lane(2, 60, L2.y, 1480, L2.h, 1); });
+    const times = [0.8, 2.0, 3.2, 4.4, 6.6, 7.9, 9.2, 10.5];
+    for (let i = 0; i < 8; i++) {
+      const l = i < 4 ? L1 : L2, x = BX[i % 4], y = l.y + 64, col = i < 4 ? C.blue : C.green;
+      const hl = P(t, times[i], times[i] + 0.4);
+      A(a0, () => stepBox(i, x, y, BW, 140, { hl, pulse: bump(t, times[i], times[i] + 1.0) }));
+      A(hl, () => para(STEPS[i].def, x + BW / 2, y + 140 + 34, BW - 10, { size: 19, weight: 600, color: C.ink, align: 'center', lh: 1.25 }));
+      if (i % 4 < 3) {
+        arrow(x + BW + 10, y + 70, BX[i % 4 + 1] - 10, y + 70, { color: col, lw: 3.5, p: a0 });
+        const u = P(t, times[i] + 0.5, times[i + 1], lin);
+        if (u > 0 && u < 1) dot(lerp(x + BW + 10, BX[i % 4 + 1] - 10, u), y + 70, 8, col, { glow: 14 });
+      }
+    }
+    const cu = P(t, 5.0, 6.5, lin);
+    const cpts = [[BX[3] + BW, L1.y + 134], [1510, L1.y + 134], [1510, 468], [BX[1] + BW / 2, 468], [BX[1] + BW / 2, L2.y + 60]];
+    pathArrow(cpts, { color: C.ink, lw: 3, dash: [10, 8], p: a0 });
+    if (cu > 0 && cu < 1) { const p = pointAlong(cpts, cu); dot(p[0], p[1], 8, C.ink, { glow: 14 }); }
+    A(P(t, 14.6, 15.4), () => text('Buscar primero, responder después, y citar la fuente.', W / 2, 846, { size: 30, weight: 700, fam: 'display', align: 'center' }));
+  }
+});
+
+/* ---------- motor de reproducción ---------- */
+const starts = []; let total = 0;
+scenes.forEach(s => { starts.push(total); total += s.dur; });
+let T = 0, playing = false, speed = 1, last = 0, heldAtEnd = false, lastScene = -1, lastCap = '';
+const $ = id => document.getElementById(id);
+const capEl = $('caption'), capSpan = capEl.querySelector('span');
+const scrub = $('scrub'); scrub.max = total;
+const fmt = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+function sceneAt(t) { for (let k = 0; k < scenes.length; k++) if (t < starts[k] + scenes[k].dur) return k; return scenes.length - 1; }
+
+function drawBg() {
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = C.grid;
+  for (let x = 20; x < W; x += 40) for (let y = 20; y < H; y += 40) ctx.fillRect(x - 1, y - 1, 2.4, 2.4);
+}
+function render() {
+  const i = sceneAt(T), lt = T - starts[i];
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.globalAlpha = 1;
+  drawBg();
+  ctx.save();
+  try { scenes[i].draw(lt); } catch (e) { console.error(e); }
+  ctx.restore();
+  updateUI(i, lt);
+}
+function updateUI(i, lt) {
+  const caps = scenes[i].caps; let c = caps[0][1];
+  for (const [ct, s] of caps) if (lt >= ct) c = s;
+  if (c !== lastCap) {
+    lastCap = c; capSpan.textContent = c;
+    capEl.classList.remove('fresh'); void capEl.offsetWidth; capEl.classList.add('fresh');
+  }
+  if (i !== lastScene) {
+    lastScene = i;
+    document.querySelectorAll('.chap').forEach((b, k) => k === i ? b.setAttribute('aria-current', 'step') : b.removeAttribute('aria-current'));
+    cv.setAttribute('aria-label', 'Escena ' + (i + 1) + ' de ' + scenes.length + ': ' + scenes[i].short);
+  }
+  scrub.value = T;
+  $('time').textContent = fmt(T) + ' / ' + fmt(total);
+  $('bigplay').hidden = playing || T > 0.01;
+}
+function setPlaying(p) {
+  playing = p;
+  $('playLabel').textContent = p ? 'Pausar' : 'Reproducir';
+  $('playIcon').innerHTML = p ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z" fill="currentColor"/>' : '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>';
+  $('play').setAttribute('aria-label', p ? 'Pausar' : 'Reproducir');
+  if (p) { last = performance.now(); requestAnimationFrame(tick); }
+  render();
+}
+function play() {
+  if (T >= total - 0.05) T = 0;
+  if (heldAtEnd) { const i = sceneAt(T); if (i < scenes.length - 1) T = starts[i + 1]; heldAtEnd = false; }
+  setPlaying(true);
+}
+function pause() { setPlaying(false); }
+function tick(now) {
+  if (!playing) return;
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const i = sceneAt(T), end = starts[i] + scenes[i].dur;
+  let nT = T + dt * speed;
+  if ($('pauseEach').checked && nT >= end && i < scenes.length - 1) { T = end - 0.001; heldAtEnd = true; pause(); return; }
+  if (nT >= total) { T = total - 0.001; pause(); return; }
+  T = nT; render();
+  requestAnimationFrame(tick);
+}
+function seek(t) { T = clamp(t, 0, total - 0.001); heldAtEnd = false; render(); }
+function goScene(k) { k = Math.max(0, Math.min(scenes.length - 1, k)); seek(starts[k]); }
+function prev() { const i = sceneAt(T); if (T - starts[i] > 1.5 && !heldAtEnd) goScene(i); else goScene(heldAtEnd ? i : i - 1); }
+function next() { goScene(sceneAt(T) + 1); }
+
+// capítulos y marcas
+const nav = $('chapters'), ticks = $('ticks');
+scenes.forEach((s, k) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chap' + (s.phase ? ' p' + s.phase : '');
+  b.innerHTML = '<span class="n">' + String(k + 1).padStart(2, '0') + ' · ' + fmt(s.dur) + '</span><span class="t"></span>';
+  b.querySelector('.t').textContent = s.short;
+  b.addEventListener('click', () => goScene(k));
+  nav.appendChild(b);
+  const tk = document.createElement('i'); tk.className = s.phase ? 'p' + s.phase : '';
+  tk.style.left = 'calc(' + (starts[k] / total * 100) + '% - 1px)';
+  ticks.appendChild(tk);
+});
+
+$('play').addEventListener('click', () => playing ? pause() : play());
+$('bigplay').addEventListener('click', play);
+$('prev').addEventListener('click', prev);
+$('next').addEventListener('click', next);
+scrub.addEventListener('input', () => seek(parseFloat(scrub.value)));
+$('speed').addEventListener('change', e => { speed = parseFloat(e.target.value) || 1; });
+function toggleFs() {
+  const el = $('player');
+  try {
+    if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    else { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (r && r.catch) r.catch(() => {}); }
+  } catch (e) { /* pantalla completa no disponible */ }
+}
+$('fs').addEventListener('click', toggleFs);
+cv.addEventListener('click', () => playing ? pause() : play());
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === ' ' || e.code === 'Space') { if (tag === 'button' || tag === 'input' || tag === 'select') return; e.preventDefault(); playing ? pause() : play(); }
+  else if (e.key === 'ArrowRight') { if (tag === 'input' || tag === 'select') return; e.preventDefault(); next(); }
+  else if (e.key === 'ArrowLeft') { if (tag === 'input' || tag === 'select') return; e.preventDefault(); prev(); }
+  else if (e.key === 'f' || e.key === 'F') { if (tag === 'input' || tag === 'select') return; toggleFs(); }
+});
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+  scale = cv.width / W;
+  render();
+}
+if (window.ResizeObserver) new ResizeObserver(resize).observe(cv); else window.addEventListener('resize', resize);
+resize();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
+})();
+</script>
+</body>
+</html>
