@@ -1,0 +1,10 @@
+# Las cuatro lecciones corren con la biblioteca estándar de Python 3.9+.
+# No hace falta instalar nada para el recorrido de la clase.
+#
+# Opcional, solo si querés que el chunking semántico mida saltos con un
+# modelo de oraciones en vez de TF-IDF:
+#
+#     pip install sentence-transformers
+#     USAR_MODELO_SEMANTICO=1 python ejemplos/03_chunking_semantico.py
+#
+# sentence-transformers
