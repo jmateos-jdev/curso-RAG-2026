@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análisis de los ejemplos de chunking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8EDF4;
+  --surface:#FFFFFF;
+  --ink:#14213D;
+  --muted:#56657C;
+  --line:#CFD8E5;
+  --blue:#2F6FED;
+  --green:#0F9D67;
+  --amber:#C98A08;
+  --violet:#6B5BD6;
+  --font-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --font-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 16px 64px}
+header h1{font-family:var(--font-display);font-weight:700;font-size:clamp(1.7rem,3vw,2.3rem);margin:0;letter-spacing:-0.01em;text-wrap:balance}
+header p{margin:8px 0 0;color:var(--muted);max-width:72ch}
+.blocknav{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px;padding:10px 0;background:color-mix(in srgb, var(--bg) 88%, transparent);backdrop-filter:blur(10px)}
+.blocknav a{font:600 14px/1 var(--font-body);color:var(--ink);text-decoration:none;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+.blocknav a:hover{background:#F4F7FB}
+.block{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 22px 20px;margin-top:16px;scroll-margin-top:64px}
+.kicker{margin:0 0 6px;font:600 13px/1.3 var(--font-mono);color:var(--blue);letter-spacing:.01em}
+h2{font:700 1.45rem/1.25 var(--font-display);margin:0 0 10px;letter-spacing:-0.01em}
+h3{font:700 1.05rem/1.3 var(--font-display);margin:16px 0 6px}
+p{margin:0 0 12px}
+.muted{color:var(--muted)}
+code{font-family:var(--font-mono);font-size:.92em}
+table{width:100%;border-collapse:collapse;margin:8px 0 4px;font-size:15.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:700 13px/1.3 var(--font-mono);color:var(--muted);font-weight:700}
+tr:last-child td{border-bottom:0}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.metric{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#F8FAFD}
+.metric b{display:block;font:700 1.35rem/1.1 var(--font-display)}
+.metric span{color:var(--muted);font-size:15px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.col{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#F8FAFD}
+.col.bad{border-top:4px solid var(--amber)}
+.col.good{border-top:4px solid var(--green)}
+.col.blue{border-top:4px solid var(--blue)}
+.col.violet{border-top:4px solid var(--violet)}
+.col p:last-child,.col pre:last-child{margin-bottom:0}
+.tag{display:block;margin-bottom:6px;font:600 12px/1.3 var(--font-mono);color:var(--violet)}
+pre{margin:8px 0 0;background:#F7F9FC;border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow:auto;font:500 13.5px/1.55 var(--font-mono);white-space:pre-wrap}
+.cut{color:#8A5D00;font-weight:700;background:#FDF0D2;border-radius:4px;padding:0 3px}
+.ok{color:var(--green);font-weight:700}
+ul.clean{margin:8px 0 0;padding-left:1.15em}
+ul.clean li{margin:4px 0}
+.note{margin:12px 0 0;padding:12px 14px;border-radius:12px;background:#F7F9FC;border:1px solid var(--line)}
+.note strong{font-family:var(--font-display)}
+@media (max-width:820px){
+  .metrics,.split{grid-template-columns:1fr}
+  table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Análisis de los ejemplos de chunking</h1>
+    <p>Clase 1. Los cuatro scripts leyeron el mismo reglamento (<code>clase1/ejemplos/texto_reglamento.md</code>) y terminaron sin error. El tamaño de corte es chico a propósito, para que en un texto corto se vea qué conserva cada estrategia y qué rompe.</p>
+  </header>
+
+  <nav class="blocknav" aria-label="Ejemplos">
+    <a href="#resumen">Resumen</a>
+    <a href="#naive">Naive</a>
+    <a href="#recursivo">Recursivo</a>
+    <a href="#semantico">Semántico</a>
+    <a href="#jerarquico">Jerárquico</a>
+  </nav>
+
+  <section class="block" id="resumen">
+    <p class="kicker">Los cuatro corridos</p>
+    <h2>Misma fuente, cuatro maneras de partirla</h2>
+    <p>Naive y recursivo solo parten texto. Semántico y jerárquico además embebeben con <code>paraphrase-multilingual-MiniLM-L12-v2</code>. El semántico avisó que <code>langchain-experimental</code> dejó de mantenerse; el corte salió igual.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Script</th>
+          <th>Resultado</th>
+          <th>Qué se ve en la salida</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>01_naive.py</code></td>
+          <td>26 fragmentos de 80 caracteres</td>
+          <td>Corta palabras y mezcla secciones. El último fragmento queda en 41 caracteres.</td>
+        </tr>
+        <tr>
+          <td><code>02_recursivo.py</code></td>
+          <td>18 fragmentos de hasta ~40 tokens</td>
+          <td>Respeta palabras, solapa 8 tokens y guarda módulo, sección y subsección en metadatos.</td>
+        </tr>
+        <tr>
+          <td><code>03_semantico.py</code></td>
+          <td>7 fragmentos, de 97 a 901 caracteres</td>
+          <td>Junta oraciones enteras. En este reglamento corto también pega temas distintos que suenan parecido.</td>
+        </tr>
+        <tr>
+          <td><code>04_jerarquico.py</code></td>
+          <td>Hijo de 86 caracteres, padre de 267</td>
+          <td>La búsqueda pega en una frase cortada. Al modelo le vuelve el párrafo completo de los 3 días.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block" id="naive">
+    <p class="kicker">01_naive.py</p>
+    <h2>Corte fijo: 26 bloques de 80 caracteres</h2>
+    <div class="metrics">
+      <div class="metric"><b>26</b><span>fragmentos, sin solapamiento</span></div>
+      <div class="metric"><b>80</b><span>caracteres en 25 de los 26</span></div>
+      <div class="metric"><b>41</b><span>caracteres en el resto final</span></div>
+    </div>
+    <p><code>CharacterTextSplitter</code> con <code>separator=""</code> no mira párrafos, oraciones ni títulos. Cuenta caracteres y corta, aunque el corte caiga dentro de una palabra. En un manual real ese tamaño rondaría los 500 caracteres; acá es 80 para que la fractura se vea.</p>
+    <h3>Palabras partidas al medio</h3>
+    <div class="split">
+      <div class="col bad">
+        <span class="tag">Fragmentos 5 y 6</span>
+        <pre>…deja la materia en condición de libre y <span class="cut">oblig</span>
+<span class="cut">a</span> a recursarla el cuatrimestre siguiente.</pre>
+      </div>
+      <div class="col bad">
+        <span class="tag">Fragmentos 6 y 7</span>
+        <pre>### Exámenes
+
+Los <span class="cut">exám</span>
+<span class="cut">enes</span> finales se celebran en junio…</pre>
+      </div>
+      <div class="col bad">
+        <span class="tag">Fragmentos 10 y 11</span>
+        <pre>### Entregas con retraso
+
+Los <span class="cut">tra</span>
+<span class="cut">bajos</span> se aceptan hasta 3 días después…</pre>
+      </div>
+      <div class="col bad">
+        <span class="tag">Fragmentos 17 y 18</span>
+        <pre>…después del cierre.
+
+<span class="cut">##</span>
+<span class="cut"> Servicios</span>
+
+### Biblioteca</pre>
+      </div>
+    </div>
+    <p class="note">El mismo patrón se repite en “escri/to”, “aprob/ación”, “me/sa de julio”, “tar/ea de la plataforma”, “cuart/o día”, “21:/00”, “p/réstamo” y “ejemp/lar”. Un embedding de “exám” no apunta a “examen”, y el título <code>## Servicios</code> queda inutilizable porque el numeral y la palabra cayeron en fragmentos distintos.</p>
+    <h3>Qué implica para la búsqueda</h3>
+    <p>Un fragmento puede mezclar el final de Asistencia con el encabezado de Exámenes (fragmento 6) o el cierre de los exámenes con el título de Entregas (fragmento 10). Quien pregunte por la nota mínima puede recibir un vector que también habla de inasistencias, o un trozo que ni siquiera contiene la palabra entera. Sin solapamiento, lo que el corte parte no se recupera en ninguno de los dos lados.</p>
+  </section>
+
+  <section class="block" id="recursivo">
+    <p class="kicker">02_recursivo.py</p>
+    <h2>Títulos en metadatos y corte por separadores</h2>
+    <div class="metrics">
+      <div class="metric"><b>18</b><span>fragmentos</span></div>
+      <div class="metric"><b>40</b><span>tokens como tope, medidos con cl100k_base</span></div>
+      <div class="metric"><b>8</b><span>tokens de solapamiento</span></div>
+    </div>
+    <p>Primero <code>MarkdownHeaderTextSplitter</code> separa por <code>#</code>, <code>##</code> y <code>###</code> y guarda esa jerarquía. Después <code>RecursiveCharacterTextSplitter</code> parte lo que no entra, probando párrafos, líneas, palabras y, recién al final, caracteres. En esta corrida no hizo falta llegar a caracteres: los cortes caen entre palabras.</p>
+    <h3>La sección viaja con el texto</h3>
+    <pre>Fragmento 8 (40 tokens)
+metadatos: {'Modulo': 'Reglamento académico', 'Seccion': 'Evaluación', 'Subseccion': 'Entregas con retraso'}
+Los trabajos se aceptan hasta 3 días después de la fecha límite. El plazo se cuenta en días corridos desde las 23:59 del día de entrega publicado en el</pre>
+    <p>Aunque la frase queda abierta, los metadatos dicen que esto es Evaluación → Entregas con retraso, no Biblioteca ni Uso de IA. Naive no tiene ese dato.</p>
+    <h3>El solapamiento cose la frase</h3>
+    <div class="split">
+      <div class="col good">
+        <span class="tag">Fragmento 1, cierre</span>
+        <pre>…no por hora de <span class="ok">reloj. Una inasistencia</span></pre>
+      </div>
+      <div class="col good">
+        <span class="tag">Fragmento 2, inicio</span>
+        <pre><span class="ok">reloj. Una inasistencia</span> justificada con certificado médico…</pre>
+      </div>
+    </div>
+    <p>Esos tokens repetidos son el solapamiento de 8. Si la búsqueda cae en el segundo fragmento, igual aparece “reloj” y el arranque de la inasistencia justificada. El precio es un poco de texto duplicado y colas cortas: el fragmento 4 tiene 11 tokens (“recursarla el cuatrimestre siguiente.”) y el 12 tiene 16.</p>
+    <p class="note">El tope de 40 tokens no es una pared rígida. El fragmento 3 salió con 41. El splitter prioriza no cortar una palabra; cuando el último empalme se pasa por un token, lo deja. En el resto, los fragmentos largos quedan en 36–40 tokens.</p>
+  </section>
+
+  <section class="block" id="semantico">
+    <p class="kicker">03_semantico.py</p>
+    <h2>Siete fragmentos, cortados donde el tema parece cambiar</h2>
+    <div class="metrics">
+      <div class="metric"><b>7</b><span>fragmentos, sin tamaño fijo</span></div>
+      <div class="metric"><b>901</b><span>caracteres en el fragmento más largo</span></div>
+      <div class="metric"><b>70</b><span>percentil de distancia entre oraciones</span></div>
+    </div>
+    <p><code>SemanticChunker</code> embebe cada oración y mide el coseno con la siguiente. Un salto grande marca un corte. El umbral es el percentil 70 de esas distancias: en un documento largo el material de la clase usa 95; en este reglamento corto, 70 alcanza para ver varios cortes. No hay metadatos de título. El markdown entra como texto más.</p>
+    <table>
+      <thead>
+        <tr><th>Fragmento</th><th>Caracteres</th><th>De qué habla</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>156</td><td>Título y las dos primeras oraciones de asistencia: 80 % y faltas por encuentro.</td></tr>
+        <tr><td>2</td><td>901</td><td>Certificado médico, condición de libre, exámenes de junio y el plazo de 3 días. Tres temas en un solo bloque.</td></tr>
+        <tr><td>3</td><td>223</td><td>Solo la penalización: 10 % por día y cero al cuarto día.</td></tr>
+        <tr><td>4</td><td>317</td><td>La excepción por fallas de conexión, pegada a horarios y préstamo de la biblioteca.</td></tr>
+        <tr><td>5</td><td>97</td><td>Reserva de salas de estudio. Una sola idea.</td></tr>
+        <tr><td>6</td><td>168</td><td>Hay que declarar la herramienta de IA y la sección donde intervino.</td></tr>
+        <tr><td>7</td><td>167</td><td>La sanción: anular la entrega y derivar al régimen de convivencia.</td></tr>
+      </tbody>
+    </table>
+    <div class="split">
+      <div class="col good">
+        <span class="tag">Fragmento 3, un tema solo</span>
+        <pre>Cada día de retraso resta un 10 % de la nota del trabajo. El descuento se aplica sobre la nota obtenida, no sobre la nota máxima. Al cuarto día la entrega se considera no presentada y la calificación de ese trabajo es cero.</pre>
+      </div>
+      <div class="col bad">
+        <span class="tag">Fragmento 4, dos temas pegados</span>
+        <pre>No hay excepción por fallas de conexión reclamadas después del cierre. ## Servicios
+
+### Biblioteca
+
+La biblioteca abre de lunes a viernes, de 8:00 a 21:00. … El préstamo de libros es por siete días…</pre>
+      </div>
+    </div>
+    <p class="note">El reglamento está escrito todo en el mismo registro. “El examen es escrito” y “los trabajos se aceptan hasta 3 días” se parecen más entre sí, para este modelo, que “penalización de la nota” y “horario de biblioteca”. Por eso el fragmento 2 se come Evaluación entera y el 4 salta de Entregas a Biblioteca sin que el encabezado <code>## Servicios</code> fuerce un corte. Los títulos no son una señal para este splitter: solo lo es la distancia entre oraciones.</p>
+  </section>
+
+  <section class="block" id="jerarquico">
+    <p class="kicker">04_jerarquico.py</p>
+    <h2>Se busca con el hijo y se responde con el padre</h2>
+    <p>La consulta fue <strong>¿Hasta cuándo puedo entregar un trabajo con retraso?</strong> Los hijos se indexan en un vector store en memoria, con cortes de hasta 90 caracteres. Los padres, de hasta 500, viven en un almacén clave-valor, también en memoria. La búsqueda pega en el hijo; lo que vuelve es el padre que lo contiene.</p>
+    <div class="metrics">
+      <div class="metric"><b>86</b><span>caracteres del hijo que matcheó</span></div>
+      <div class="metric"><b>267</b><span>caracteres del padre devuelto</span></div>
+      <div class="metric"><b>3 días</b><span>la respuesta está en el padre</span></div>
+    </div>
+    <div class="split">
+      <div class="col violet">
+        <span class="tag">Hijo indexado</span>
+        <pre>Los trabajos se aceptan hasta 3 días después de la fecha límite. El plazo se cuenta en</pre>
+        <p class="muted">Frase cortada. Alcanza para que el embedding apunte a “3 días” y “fecha límite”, y no alcanza para responder solo.</p>
+      </div>
+      <div class="col blue">
+        <span class="tag">Padre devuelto al modelo</span>
+        <pre>Los trabajos se aceptan hasta 3 días después de la fecha límite. El plazo se cuenta en días corridos desde las 23:59 del día de entrega publicado en el campus. No se reciben archivos por correo ni por mensaje privado: la única vía válida es la tarea de la plataforma.</pre>
+      </div>
+    </div>
+    <p>El padre completa la frase del hijo y agrega dos reglas que la pregunta necesita: el plazo corre desde las 23:59 y la única vía es la tarea de la plataforma. Naive habría podido devolver “Los tra” o “bajos se aceptan” sin el resto. El recursivo habría devuelto un trozo de ~40 tokens con metadatos, pero no este párrafo entero.</p>
+    <p class="note">El padre no es toda la subsección. “Cada día de retraso resta un 10 %” y “al cuarto día la calificación es cero” quedaron en otro padre, porque cada párrafo entra solo en el tope de 500 caracteres y el solapamiento del padre es 0. Para “hasta cuándo” el párrafo devuelto alcanza. Para “cuánto descuenta el retraso”, esta misma consulta no trae la regla: habría que pegar en el hijo de ese otro párrafo.</p>
+  </section>
+
+  <section class="block" id="lectura">
+    <p class="kicker">Lectura conjunta</p>
+    <h2>Qué conviene según lo que se quiera recuperar</h2>
+    <ul class="clean">
+      <li>El corte naive muestra el fallo de base: tamaño fijo, sin idioma y sin estructura. En esta corrida parte “obliga”, “exámenes” y hasta el título <code>## Servicios</code>.</li>
+      <li>El recursivo es el que mejor describe el reglamento como documento: palabras enteras, un poco de contexto repetido y la sección en los metadatos. Sigue pudiendo dejar una idea a caballo de dos fragmentos; el solapamiento de 8 tokens mitiga eso, no lo elimina.</li>
+      <li>El semántico gana cuando el cambio de tema es brusco (la penalización del 10 % quedó sola; Uso de IA se partió en declaración y sanción) y pierde cuando todo el texto suena a norma. El encabezado markdown no lo frena.</li>
+      <li>El jerárquico separa el problema en dos: el hijo corto afina la búsqueda y el padre le da al modelo una unidad legible. En esta consulta esa unidad fue el párrafo de los 3 días, no la subsección completa.</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

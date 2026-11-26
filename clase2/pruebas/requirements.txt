@@ -1,0 +1,6 @@
+chromadb
+qdrant-client
+sentence-transformers
+numpy
+scikit-learn
+tiktoken

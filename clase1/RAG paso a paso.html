@@ -97,6 +97,25 @@ ol{margin:0;padding-left:1.3em;display:grid;gap:8px}
 @media (prefers-reduced-motion:reduce){
   .caption.fresh span{animation:none}
 }
+
+.codeview{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.codeview h2{font:700 1.15rem/1.3 var(--font-display);margin:0 0 8px}
+.codeview .lede{margin:0 0 14px;color:var(--muted);max-width:78ch}
+.codeview .lede code{font-family:var(--font-mono);font-size:.92em;color:var(--ink)}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{font:600 15px/1 var(--font-body);color:var(--ink);background:#F1F4F9;border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer}
+.tab:hover{background:#E6ECF5}
+.tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.tab:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.ex-desc{margin:12px 0 4px}
+.ex-file{margin:0 0 10px;font:500 14px/1.4 var(--font-mono);color:var(--muted)}
+.ex-code{margin:0;background:#F7F9FC;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto;max-height:32rem;font:500 13.5px/1.55 var(--font-mono);color:var(--ink);tab-size:4}
+.ex-code .kw{color:var(--blue);font-weight:700}
+.ex-code .str{color:var(--green)}
+.ex-code .cmt{color:var(--muted);font-style:italic}
+.ex-run{margin:10px 0 0;color:var(--muted);font-size:15px}
+.ex-run code{font-family:var(--font-mono);font-size:.92em;color:var(--ink)}
+dd a{color:var(--blue);font-weight:700}
 </style>
 </head>
 <body>
@@ -161,7 +180,7 @@ ol{margin:0;padding-left:1.3em;display:grid;gap:8px}
         <dt>RAG</dt><dd>Retrieval-Augmented Generation: buscar información en tus documentos y dársela al LLM antes de que responda.</dd>
         <dt>LLM</dt><dd>Modelo de lenguaje grande. Genera texto a partir de lo que aprendió en su entrenamiento.</dd>
         <dt>Alucinación</dt><dd>Respuesta que suena convincente pero es inventada.</dd>
-        <dt class="p1">Chunking</dt><dd>Dividir los documentos en fragmentos (chunks), a veces con un pequeño solapamiento.</dd>
+        <dt class="p1">Chunking</dt><dd>Dividir los documentos en fragmentos (chunks), a veces con un pequeño solapamiento. <a href="#ejemplos">Ver ejemplos en Python</a></dd>
         <dt class="v">Embedding</dt><dd>Vector de números que representa el significado de un texto. Significados parecidos, vectores cercanos.</dd>
         <dt class="p1">Base de datos vectorial</dt><dd>Guarda vectores, texto y metadatos, y encuentra rápido los vectores más cercanos.</dd>
         <dt class="p2">Recuperación (top-k)</dt><dd>Elegir los k fragmentos más parecidos a la pregunta, por ejemplo con similitud coseno.</dd>
@@ -178,7 +197,273 @@ ol{margin:0;padding-left:1.3em;display:grid;gap:8px}
       </ol>
     </div>
   </section>
+
+  <section class="codeview" id="ejemplos">
+    <h2>Ejemplos en Python</h2>
+    <p class="lede">Los cuatro scripts leen el mismo reglamento (<code>ejemplos/texto_reglamento.md</code>). Naive y recursivo solo usan los splitters. Semántico y jerárquico descargan un modelo de embeddings la primera vez, sin API key.</p>
+    <div class="tabs" role="tablist" aria-label="Estrategias de chunking">
+      <button class="tab" type="button" role="tab" id="tab-01_naive.py" aria-selected="true" aria-controls="ex-code">Naive</button>
+      <button class="tab" type="button" role="tab" id="tab-02_recursivo.py" aria-selected="false" aria-controls="ex-code">Recursivo</button>
+      <button class="tab" type="button" role="tab" id="tab-03_semantico.py" aria-selected="false" aria-controls="ex-code">Semántico</button>
+      <button class="tab" type="button" role="tab" id="tab-04_jerarquico.py" aria-selected="false" aria-controls="ex-code">Jerárquico</button>
+    </div>
+    <p class="ex-desc" id="ex-desc"></p>
+    <p class="ex-file" id="ex-file"></p>
+    <pre class="ex-code"><code id="ex-code"></code></pre>
+    <p class="ex-run" id="ex-run"></p>
+  </section>
 </div>
+
+<script type="text/plain" id="src-01_naive.py">
+"""Chunking naive: corte fijo por cantidad de caracteres.
+
+No mira párrafos, oraciones ni títulos. Parte el texto cada N caracteres,
+aunque el corte caiga en medio de una palabra. En un manual real ese N
+ronda los 500 caracteres; aquí es más chico para que la fractura se vea
+en este reglamento corto.
+"""
+
+from pathlib import Path
+
+from langchain_text_splitters import CharacterTextSplitter
+
+TEXTO = Path(__file__).with_name("texto_reglamento.md").read_text(encoding="utf-8")
+
+# separator="" parte en caracteres y rearma bloques de chunk_size.
+# En un manual real el corte naive típico ronda los 500 caracteres.
+splitter = CharacterTextSplitter(
+    separator="",
+    chunk_size=80,
+    chunk_overlap=0,
+    length_function=len,
+    strip_whitespace=False,
+)
+
+fragmentos = splitter.split_text(TEXTO)
+
+print(f"{len(fragmentos)} fragmentos (corte fijo de 80 caracteres, sin solapamiento)\n")
+for i, frag in enumerate(fragmentos, 1):
+    print(f"--- Fragmento {i} ({len(frag)} caracteres) ---")
+    print(frag)
+    print()
+</script>
+<script type="text/plain" id="src-02_recursivo.py">
+"""Chunking recursivo: títulos en los metadatos y corte por separadores naturales.
+
+Primero MarkdownHeaderTextSplitter separa por #, ## y ### y guarda esa
+jerarquía en los metadatos de cada sección. Después
+RecursiveCharacterTextSplitter parte lo que no entra en el tamaño, probando
+en orden párrafos, líneas, palabras y, recién al final, caracteres.
+El tamaño se mide en tokens del tokenizador cl100k_base, no en caracteres.
+"""
+
+from pathlib import Path
+
+import tiktoken
+from langchain_text_splitters import (
+    MarkdownHeaderTextSplitter,
+    RecursiveCharacterTextSplitter,
+)
+
+TEXTO = Path(__file__).with_name("texto_reglamento.md").read_text(encoding="utf-8")
+encoder = tiktoken.get_encoding("cl100k_base")
+
+encabezados = [("#", "Modulo"), ("##", "Seccion"), ("###", "Subseccion")]
+secciones = MarkdownHeaderTextSplitter(headers_to_split_on=encabezados).split_text(TEXTO)
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=40,
+    chunk_overlap=8,
+    separators=["\n\n", "\n", " ", ""],
+    length_function=lambda texto: len(encoder.encode(texto)),
+)
+fragmentos = splitter.split_documents(secciones)
+
+print(f"{len(fragmentos)} fragmentos (hasta 40 tokens, solapamiento de 8)\n")
+for i, frag in enumerate(fragmentos, 1):
+    tokens = len(encoder.encode(frag.page_content))
+    print(f"--- Fragmento {i} ({tokens} tokens) ---")
+    print(f"metadatos: {frag.metadata}")
+    print(frag.page_content)
+    print()
+</script>
+<script type="text/plain" id="src-03_semantico.py">
+"""Chunking semántico: corta donde cambia el tema, no al llegar a un tamaño.
+
+SemanticChunker embebe cada oración y mide la distancia coseno con la
+siguiente. Un salto grande (poco parecido) marca un corte. El umbral es un
+percentil de esas distancias. En documentos largos el temario usa el
+percentil 95; este reglamento es corto, así que 70 alcanza para ver los
+cambios de tema.
+
+La primera ejecución descarga el modelo de embeddings. No hace falta una API key.
+
+Para umbral estadístico (media + k desviaciones estándar), reemplazar el
+splitter por:
+
+    SemanticChunker(
+        embeddings,
+        breakpoint_threshold_type="standard_deviation",
+        breakpoint_threshold_amount=1.5,
+    )
+"""
+
+from pathlib import Path
+
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_huggingface import HuggingFaceEmbeddings
+
+TEXTO = Path(__file__).with_name("texto_reglamento.md").read_text(encoding="utf-8")
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    model_kwargs={"device": "cpu"},
+)
+splitter = SemanticChunker(
+    embeddings,
+    breakpoint_threshold_type="percentile",
+    breakpoint_threshold_amount=70,
+)
+
+fragmentos = [frag.strip() for frag in splitter.split_text(TEXTO) if frag.strip()]
+
+print(f"{len(fragmentos)} fragmentos (corte por percentil de distancia entre oraciones)\n")
+for i, frag in enumerate(fragmentos, 1):
+    print(f"--- Fragmento {i} ({len(frag)} caracteres) ---")
+    print(frag)
+    print()
+</script>
+<script type="text/plain" id="src-04_jerarquico.py">
+"""Chunking jerárquico: se busca con el hijo chico y se responde con el padre.
+
+Los fragmentos hijos son cortos, así el embedding apunta a una idea. Lo que
+vuelve al modelo es el padre, más largo, guardado en un almacén clave-valor.
+Acá los dos almacenes son memoria. En el laboratorio el vector store de los
+hijos se cambia por Chroma; el docstore del padre puede ser Redis o SQL.
+"""
+
+from pathlib import Path
+
+from langchain_classic.retrievers import ParentDocumentRetriever
+from langchain_classic.storage import InMemoryStore
+from langchain_core.documents import Document
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+TEXTO = Path(__file__).with_name("texto_reglamento.md").read_text(encoding="utf-8")
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    model_kwargs={"device": "cpu"},
+)
+
+# El padre conserva la sección; el hijo aísla poco texto para indexarlo.
+padre = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)
+hijo = RecursiveCharacterTextSplitter(chunk_size=90, chunk_overlap=0)
+
+vectorstore = InMemoryVectorStore(embedding=embeddings)
+docstore = InMemoryStore()
+retriever = ParentDocumentRetriever(
+    vectorstore=vectorstore,
+    docstore=docstore,
+    child_splitter=hijo,
+    parent_splitter=padre,
+)
+retriever.add_documents(
+    [Document(page_content=TEXTO, metadata={"source": "texto_reglamento.md"})]
+)
+
+consulta = "¿Hasta cuándo puedo entregar un trabajo con retraso?"
+hijo_hallado = vectorstore.similarity_search(consulta, k=1)[0]
+padres = retriever.invoke(consulta)
+
+print(f"Consulta: {consulta}\n")
+print("--- Hijo indexado (lo que matchea la búsqueda) ---")
+print(hijo_hallado.page_content.strip())
+print()
+print("--- Padre devuelto al modelo ---")
+print(padres[0].page_content.strip())
+print()
+print(
+    f"El hijo tiene {len(hijo_hallado.page_content)} caracteres; "
+    f"el padre, {len(padres[0].page_content)}."
+)
+</script>
+
+<script>
+(() => {
+  'use strict';
+  const examples = [
+    { file: '01_naive.py', desc: 'Corte fijo cada 80 caracteres, sin mirar frases ni títulos. El corte puede caer en medio de una palabra.' },
+    { file: '02_recursivo.py', desc: 'Separa por títulos de Markdown y después por párrafos, líneas y palabras. El tamaño se mide en tokens.' },
+    { file: '03_semantico.py', desc: 'Compara el significado de oraciones vecinas y corta donde la distancia entre ellas es alta.' },
+    { file: '04_jerarquico.py', desc: 'Indexa fragmentos chicos para buscar, y devuelve la sección padre completa para responder.' }
+  ];
+  const descEl = document.getElementById('ex-desc');
+  const fileEl = document.getElementById('ex-file');
+  const codeEl = document.getElementById('ex-code');
+  const runEl = document.getElementById('ex-run');
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function highlight(code) {
+    const re = /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#.*$|\b(?:from|import|as|def|return|class|if|elif|else|for|in|not|and|or|with|lambda|None|True|False|try|except|pass|yield)\b)/gm;
+    let last = 0, out = '', m;
+    while ((m = re.exec(code))) {
+      out += escapeHtml(code.slice(last, m.index));
+      const t = m[0];
+      const cls = t[0] === '#' ? 'cmt' : (t[0] === '"' || t[0] === "'") ? 'str' : 'kw';
+      out += '<span class="' + cls + '">' + escapeHtml(t) + '</span>';
+      last = m.index + t.length;
+    }
+    return out + escapeHtml(code.slice(last));
+  }
+
+  function embedded(file) {
+    const node = document.getElementById('src-' + file);
+    return node ? node.textContent.replace(/^\n/, '').replace(/\n$/, '') : '';
+  }
+
+  async function load(file) {
+    const fallback = embedded(file);
+    try {
+      const res = await fetch('ejemplos/' + encodeURIComponent(file));
+      if (!res.ok) throw new Error('status');
+      const text = await res.text();
+      if (!text.trim()) throw new Error('empty');
+      return text.replace(/\s+$/, '');
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  async function show(file) {
+    examples.forEach(ex => {
+      document.getElementById('tab-' + ex.file).setAttribute('aria-selected', ex.file === file ? 'true' : 'false');
+    });
+    const ex = examples.find(item => item.file === file);
+    descEl.textContent = ex.desc;
+    fileEl.textContent = 'ejemplos/' + file;
+    runEl.textContent = '';
+    runEl.append('Desde la carpeta clase1: ');
+    const pip = document.createElement('code');
+    pip.textContent = 'pip install -r ejemplos/requirements.txt';
+    const py = document.createElement('code');
+    py.textContent = 'python ejemplos/' + file;
+    runEl.append(pip, ' y después ', py);
+    const src = await load(file);
+    codeEl.innerHTML = highlight(src);
+  }
+
+  document.querySelectorAll('.tabs .tab').forEach(tab => {
+    tab.addEventListener('click', () => show(tab.id.slice('tab-'.length)));
+  });
+  show(examples[0].file);
+})();
+</script>
 
 <script>
 (() => {

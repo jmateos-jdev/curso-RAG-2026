@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bases vectoriales y embeddings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8EDF4;
+  --surface:#FFFFFF;
+  --ink:#14213D;
+  --muted:#56657C;
+  --line:#CFD8E5;
+  --blue:#2F6FED;
+  --green:#0F9D67;
+  --amber:#C98A08;
+  --violet:#6B5BD6;
+  --font-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --font-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 16px 64px}
+header h1{font-family:var(--font-display);font-weight:700;font-size:clamp(1.7rem,3vw,2.3rem);margin:0;letter-spacing:-0.01em;text-wrap:balance}
+header p{margin:8px 0 0;color:var(--muted);max-width:68ch}
+
+.blocknav{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 8px;padding:10px 0;background:color-mix(in srgb, var(--bg) 88%, transparent);backdrop-filter:blur(10px)}
+.blocknav a{font:600 14px/1 var(--font-body);color:var(--ink);text-decoration:none;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 12px}
+.blocknav a:hover{background:#F4F7FB}
+.blocknav a[aria-current="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.blocknav a:focus-visible,.jump:focus-visible,.tab:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+
+.block{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 22px 20px;margin-top:16px;scroll-margin-top:64px}
+.kicker{margin:0 0 6px;font:600 13px/1.3 var(--font-mono);color:var(--blue);letter-spacing:.01em}
+h2{font:700 1.45rem/1.25 var(--font-display);margin:0 0 10px;letter-spacing:-0.01em}
+h3{font:700 1.05rem/1.3 var(--font-display);margin:0 0 6px}
+p{margin:0 0 12px}
+.lead{max-width:70ch}
+.muted{color:var(--muted)}
+
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.metric{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#F8FAFD}
+.metric h3{font-size:1rem}
+.metric p{margin:0;color:var(--muted);font-size:15.5px}
+.formula{margin:8px 0 0;font:600 14px/1.45 var(--font-mono);color:var(--violet)}
+
+.lab{display:grid;grid-template-columns:minmax(260px,1.2fr) minmax(240px,.8fr);gap:16px;align-items:center;margin-top:8px}
+.stage{background:#F7F9FC;border:1px solid var(--line);border-radius:14px;padding:8px}
+.stage svg{width:100%;height:auto;display:block}
+.readout label{display:grid;gap:4px;font-weight:600;margin-bottom:12px}
+.readout input[type=range]{width:100%;accent-color:var(--ink)}
+.nums{display:grid;gap:8px;margin:4px 0 10px}
+.nums div{display:flex;justify-content:space-between;gap:12px;background:#F7F9FC;border-radius:10px;padding:8px 12px}
+.nums dt{font-weight:700}
+.nums dd{margin:0;font:700 1.05rem/1 var(--font-mono)}
+.hint{margin:0;color:var(--muted);font-size:15.5px}
+
+.bars{display:grid;gap:8px;margin:12px 0}
+.bar{display:grid;grid-template-columns:7.5rem 1fr auto;gap:10px;align-items:center;font-size:15px}
+.bar i{display:block;height:12px;border-radius:999px;background:var(--violet)}
+.bar b{font-variant-numeric:tabular-nums}
+.prefix{margin:0;background:#F7F9FC;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:500 14px/1.55 var(--font-mono);overflow:auto}
+
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.col{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#F8FAFD}
+.col.violet{border-top:4px solid var(--violet)}
+.col.blue{border-top:4px solid var(--blue)}
+.col p:last-child{margin-bottom:0}
+ul.clean{margin:8px 0 0;padding-left:1.15em}
+ul.clean li{margin:4px 0}
+
+.recall{display:grid;gap:8px;margin-top:8px}
+.recall p{margin:0}
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pill{font:700 14px/1 var(--font-mono);border-radius:999px;padding:6px 10px;background:#EEF2F7;color:var(--ink)}
+.pill.hit{background:#DDF3E9;color:var(--green)}
+.pill.miss{background:#FDF0D2;color:#8A5D00}
+
+.engines{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.engine{border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.engine p{margin:0;color:var(--ink)}
+.engine .tag{display:block;margin-bottom:4px;font:600 12px/1.3 var(--font-mono);color:var(--violet)}
+
+ol.steps{margin:0;padding-left:1.2em;display:grid;gap:8px}
+a.jump{color:var(--blue);font-weight:700}
+
+.codeview{margin-top:16px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{font:600 15px/1 var(--font-body);color:var(--ink);background:#F1F4F9;border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer}
+.tab:hover{background:#E6ECF5}
+.tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.ex-desc{margin:12px 0 4px}
+.ex-file{margin:0 0 10px;font:500 14px/1.4 var(--font-mono);color:var(--muted)}
+.ex-code{margin:0;background:#F7F9FC;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto;max-height:32rem;font:500 13.5px/1.55 var(--font-mono);color:var(--ink);tab-size:4}
+.ex-code .kw{color:var(--blue);font-weight:700}
+.ex-code .str{color:var(--green)}
+.ex-code .cmt{color:var(--muted);font-style:italic}
+.ex-run{margin:10px 0 0;color:var(--muted);font-size:15px}
+.ex-run code,.lede code,p code{font-family:var(--font-mono);font-size:.92em;color:var(--ink)}
+
+@media (max-width:820px){
+  .metrics,.lab,.split,.engines{grid-template-columns:1fr}
+  .bar{grid-template-columns:5.5rem 1fr}
+  .bar b{grid-column:1 / -1}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Bases vectoriales y embeddings</h1>
+    <p>Clase 2. Cómo un texto se vuelve un punto, qué métrica mide “parecido”, y cómo un índice aproximado busca ese punto sin recorrer el archivo entero.</p>
+  </header>
+
+  <nav class="blocknav" aria-label="Bloques de la clase">
+    <a href="#bloque-1">1 · Espacios</a>
+    <a href="#bloque-2">2 · MTEB</a>
+    <a href="#bloque-3">3 · ANN</a>
+    <a href="#bloque-4">4 · HNSW / IVF</a>
+    <a href="#bloque-5">5 · Práctica</a>
+    <a href="#bloque-6">6 · Cierre</a>
+  </nav>
+
+  <section class="block" id="bloque-1">
+    <p class="kicker">00:00 – 00:15 · Teórico</p>
+    <h2>De tokens a vectores</h2>
+    <p class="lead">Un modelo de embeddings lee un fragmento y devuelve una lista de números de largo fijo: 384, 768, 1536 o 3072. Esa lista es un punto. Textos de significado cercano quedan cerca en ese espacio. La “cerca” depende de la métrica.</p>
+    <div class="metrics">
+      <article class="metric">
+        <h3>Coseno</h3>
+        <p>Mide el ángulo entre los dos vectores. Alargar un texto, o un vector, no lo cambia.</p>
+        <p class="formula">cos θ = (u · v) / (‖u‖ ‖v‖)</p>
+      </article>
+      <article class="metric">
+        <h3>Producto punto</h3>
+        <p>Proyección de uno sobre el otro. Si ambos están normalizados (norma 1), coincide con el coseno y es más barato.</p>
+        <p class="formula">u · v = u₁v₁ + … + u_d v_d</p>
+      </article>
+      <article class="metric">
+        <h3>Distancia L2</h3>
+        <p>La recta entre los extremos. Crece si un vector es más largo, aunque apunten al mismo lado.</p>
+        <p class="formula">‖u − v‖ = √Σ (uᵢ − vᵢ)²</p>
+      </article>
+    </div>
+
+    <div class="lab">
+      <div class="stage">
+        <svg id="plane" viewBox="0 0 420 300" role="img" aria-label="Dos vectores en un plano. El azul queda fijo. El violeta cambia con los controles.">
+          <line x1="48" y1="250" x2="400" y2="250" stroke="#D3DCE8" stroke-width="1.5"/>
+          <line x1="48" y1="250" x2="48" y2="16" stroke="#D3DCE8" stroke-width="1.5"/>
+          <text x="372" y="268" fill="#56657C" font-size="13" font-family="Source Sans 3, sans-serif">eje 1</text>
+          <text x="56" y="28" fill="#56657C" font-size="13" font-family="Source Sans 3, sans-serif">eje 2</text>
+          <g id="vecs"></g>
+        </svg>
+      </div>
+      <div class="readout">
+        <label>Ángulo del vector violeta
+          <input id="ang" type="range" min="0" max="90" value="28" aria-describedby="hint">
+        </label>
+        <label>Largo del vector violeta
+          <input id="len" type="range" min="40" max="180" value="70">
+        </label>
+        <dl class="nums">
+          <div><dt>Coseno</dt><dd id="m-cos">1,00</dd></div>
+          <div><dt>Producto punto</dt><dd id="m-dot">0</dd></div>
+          <div><dt>Distancia L2</dt><dd id="m-l2">0</dd></div>
+        </dl>
+        <p class="hint" id="hint"></p>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:12px">El vector azul está quieto, a 28° y con largo fijo. En los scripts, <a class="jump" href="#pruebas" data-file="01_similitud.py">01_similitud.py</a> imprime las tres métricas sobre frases reales.</p>
+  </section>
+
+  <section class="block" id="bloque-2">
+    <p class="kicker">00:15 – 00:35 · Arquitectura</p>
+    <h2>Elegir modelo, y MTEB</h2>
+    <p class="lead">MTEB (Massive Text Embedding Benchmark) ordena modelos en tareas distintas: recuperación, re-ranking y clustering, entre otras. Un modelo que lidera clustering puede ir atrás en búsqueda. Más dimensiones no arreglan un mal dominio.</p>
+    <h3>Memoria</h3>
+    <p>Cada número es un float32: 4 bytes. Un vector de 3072 dimensiones pesa cuatro veces uno de 768.</p>
+    <div class="bars" aria-label="Memoria por vector según la dimensión">
+      <div class="bar"><span>768</span><i style="width:25%"></i><b>3,1 GB / millón</b></div>
+      <div class="bar"><span>1536</span><i style="width:50%"></i><b>6,1 GB / millón</b></div>
+      <div class="bar"><span>3072</span><i style="width:100%;background:var(--amber)"></i><b>12,3 GB / millón</b></div>
+    </div>
+    <h3>Modelos asimétricos</h3>
+    <p>BGE y E5 entrenan la pregunta y el pasaje con prefijos distintos. El prefijo entra al modelo, junto con el texto. Sirve para alinear una pregunta corta contra un párrafo largo.</p>
+    <pre class="prefix">query: ¿cómo balancear el tráfico?
+passage: El balanceador distribuye el tráfico entrante entre instancias de backend.</pre>
+    <h3>Idioma</h3>
+    <p>Un modelo afinado solo en inglés pierde resolución con modismos y con término técnico en español. <a class="jump" href="#pruebas" data-file="04_embeddings_espanol.py">04_embeddings_espanol.py</a> corre la misma consulta en los dos y muestra el ranking.</p>
+  </section>
+
+  <section class="block" id="bloque-3">
+    <p class="kicker">00:35 – 00:55 · Matemático</p>
+    <h2>Búsqueda exacta y búsqueda aproximada</h2>
+    <p class="lead">El k-NN exacto compara la consulta con cada vector guardado. El costo es O(N · d): N vectores, d números cada uno. Con un millón de vectores de 768 dimensiones, cada consulta hace del orden de 768 millones de multiplicaciones antes de ordenar.</p>
+    <p>ANN (vecinos más cercanos aproximados) deja de prometer el 100 % de los verdaderos vecinos. A cambio, la búsqueda baja a algo cercano a O(log N) con un índice: un grafo o un conjunto de celdas.</p>
+    <h3>Recall@K</h3>
+    <p>De los K vecinos verdaderos, cuántos aparecen en la respuesta aproximada.</p>
+    <p class="formula">Recall@K = |vecinos ANN ∩ vecinos exactos| / K</p>
+    <div class="recall">
+      <p class="pills"><span>Exactos</span> <span class="pill hit">2</span><span class="pill hit">5</span><span class="pill">9</span></p>
+      <p class="pills"><span>ANN</span> <span class="pill hit">2</span><span class="pill hit">5</span><span class="pill miss">7</span></p>
+      <p>La intersección es {2, 5}. Recall@3 = 2 / 3 ≈ 0,67. El 7 ocupó el lugar del 9.</p>
+    </div>
+  </section>
+
+  <section class="block" id="bloque-4">
+    <p class="kicker">00:55 – 01:15 · Algoritmos</p>
+    <h2>HNSW e IVF</h2>
+    <p class="lead">Las dos familias indexan millones de puntos en milisegundos. HNSW gasta RAM para acertar. IVF comprime y revisa solo unas celdas.</p>
+    <div class="split">
+      <article class="col violet">
+        <h3>HNSW</h3>
+        <svg viewBox="0 0 360 210" role="img" aria-label="Grafo en tres capas. La búsqueda salta en la capa de arriba y afina en la de abajo.">
+          <text x="8" y="36" fill="#56657C" font-size="13" font-family="Source Sans 3, sans-serif">capa alta</text>
+          <text x="8" y="108" fill="#56657C" font-size="13" font-family="Source Sans 3, sans-serif">capa media</text>
+          <text x="8" y="178" fill="#56657C" font-size="13" font-family="Source Sans 3, sans-serif">capa base</text>
+          <g fill="none" stroke="#D3DCE8" stroke-width="1.5">
+            <path d="M110 28 H300 M140 100 H320 M100 172 H330"/>
+          </g>
+          <g fill="#E4EDFE" stroke="#2F6FED" stroke-width="1.5">
+            <circle cx="140" cy="28" r="7"/><circle cx="230" cy="28" r="7"/><circle cx="300" cy="28" r="7"/>
+            <circle cx="120" cy="100" r="6"/><circle cx="170" cy="100" r="6"/><circle cx="220" cy="100" r="6"/><circle cx="270" cy="100" r="6"/><circle cx="320" cy="100" r="6"/>
+            <circle cx="100" cy="172" r="5"/><circle cx="140" cy="172" r="5"/><circle cx="180" cy="172" r="5"/><circle cx="220" cy="172" r="5"/><circle cx="260" cy="172" r="5"/><circle cx="300" cy="172" r="5"/><circle cx="330" cy="172" r="5"/>
+          </g>
+          <g fill="none" stroke="#6B5BD6" stroke-width="2.5" stroke-linecap="round">
+            <path d="M140 28 L230 100 L220 172"/>
+          </g>
+          <g fill="#6B5BD6">
+            <circle cx="140" cy="28" r="5"/><circle cx="230" cy="100" r="5"/><circle cx="220" cy="172" r="5"/>
+          </g>
+        </svg>
+        <p>Grafo de mundos pequeños, en capas. Arriba los saltos son largos. Abajo se afina entre vecinos. Precisión alta, y el grafo entero suele vivir en RAM.</p>
+        <ul class="clean">
+          <li><b>m</b>: cuántos vecinos se le guarda a cada nodo.</li>
+          <li><b>ef_construct</b>: qué tan ancho se busca mientras se arma el grafo.</li>
+          <li><b>hnsw_ef</b>: qué tan ancho se busca en la consulta. Se puede subir sin reindexar.</li>
+        </ul>
+      </article>
+      <article class="col blue">
+        <h3>IVF + PQ</h3>
+        <svg viewBox="0 0 360 210" role="img" aria-label="El espacio partido en celdas. La consulta entra solo a las celdas vecinas.">
+          <g fill="#E4EDFE" stroke="#2F6FED" stroke-width="1.5">
+            <ellipse cx="110" cy="78" rx="78" ry="52"/>
+            <ellipse cx="230" cy="70" rx="70" ry="48"/>
+            <ellipse cx="188" cy="150" rx="96" ry="46"/>
+          </g>
+          <g fill="#9AA8BC">
+            <circle cx="90" cy="70" r="3"/><circle cx="120" cy="88" r="3"/><circle cx="140" cy="64" r="3"/>
+            <circle cx="220" cy="60" r="3"/><circle cx="250" cy="82" r="3"/><circle cx="200" cy="84" r="3"/>
+            <circle cx="160" cy="150" r="3"/><circle cx="210" cy="142" r="3"/><circle cx="230" cy="164" r="3"/>
+          </g>
+          <circle cx="300" cy="160" r="6" fill="#C98A08"/>
+          <g fill="none" stroke="#C98A08" stroke-width="1.75" stroke-dasharray="4 3">
+            <path d="M300 160 L230 82 M300 160 L210 150"/>
+          </g>
+          <text x="286" y="184" fill="#8A5D00" font-size="13" font-family="Source Sans 3, sans-serif">consulta</text>
+        </svg>
+        <p>k-means parte el espacio en celdas de Voronoi. La consulta entra a las celdas más próximas y deja el resto sin mirar. PQ (cuantización de producto) parte el vector y guarda códigos cortos: menos RAM, y un recall un poco menor.</p>
+        <ul class="clean">
+          <li><b>nlist</b>: cantidad de celdas.</li>
+          <li>La consulta revisa unas pocas celdas, no el índice completo.</li>
+          <li><b>PQ</b>: comprime las dimensiones. Ahí aparece la merma de recall.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="block" id="bloque-5">
+    <p class="kicker">01:15 – 01:45 · Hands-on</p>
+    <h2>Práctica guiada</h2>
+    <p class="lead">Dos scripts, los dos sin API key. El primero mide parecido. El segundo guarda los vectores en Qdrant, en memoria, con un HNSW afinable.</p>
+    <ol class="steps">
+      <li><a class="jump" href="#pruebas" data-file="01_similitud.py">01_similitud.py</a> embebe tres frases de infraestructura y la pregunta por el balanceo. Imprime coseno, producto punto y L2.</li>
+      <li><a class="jump" href="#pruebas" data-file="02_qdrant_hnsw.py">02_qdrant_hnsw.py</a> crea la colección <code>kb_infra</code> (384 dimensiones, coseno, <code>m=16</code>, <code>ef_construct=100</code>) y consulta con <code>hnsw_ef=64</code>.</li>
+    </ol>
+    <p style="margin-top:12px">Desde la carpeta <code>clase2</code>, con Python 3.10 o más nuevo: <code>pip install -r pruebas/requirements.txt</code> y después <code>python pruebas/01_similitud.py</code>. La primera vez se descarga el modelo multilingüe.</p>
+  </section>
+
+  <section class="block" id="bloque-6">
+    <p class="kicker">01:45 – 02:00 · Cierre</p>
+    <h2>Qué se elige en producción</h2>
+    <p class="lead">El espacio de un modelo no se compara con el de otro. Cambiar o actualizar el modelo de embeddings obliga a reindexar toda la base. El índice ANN acelera la búsqueda: no corrige un embedding que mezcló los temas.</p>
+    <div class="engines">
+      <article class="engine">
+        <span class="tag">Qdrant · HNSW con filtro de payload</span>
+        <h3>Producción con metadatos</h3>
+        <p>Memoria, o disco afinado. Encaja cuando cada fragmento trae fuente, fecha o sección y la búsqueda tiene que filtrar.</p>
+      </article>
+      <article class="engine">
+        <span class="tag">Chroma · HNSW (hnswlib)</span>
+        <h3>Prototipo local</h3>
+        <p>Memoria y SQLite. Sirve para probar una colección en la notebook antes de elegir motor.</p>
+      </article>
+      <article class="engine">
+        <span class="tag">Milvus · HNSW / IVF / ScaNN</span>
+        <h3>Escala de clúster</h3>
+        <p>Arquitectura distribuida. El caso es de cien millones de vectores, o varios equipos compartiendo el índice.</p>
+      </article>
+      <article class="engine">
+        <span class="tag">pgvector · HNSW / IVFFlat</span>
+        <h3>La base que ya está</h3>
+        <p>El índice vive en PostgreSQL, al lado de las tablas. Evita sumar otro servicio.</p>
+      </article>
+    </div>
+    <h3 style="margin-top:16px">Laboratorio</h3>
+    <ol class="steps">
+      <li><a class="jump" href="#pruebas" data-file="03_benchmark_hnsw.py">03_benchmark_hnsw.py</a> arma 5.000 vectores aleatorios de dimensión 384 y compara, en Chroma, la config rápida (<code>m=16</code>, <code>ef_construct=64</code>) con la de alta fidelidad (<code>m=64</code>, <code>ef_construct=256</code>). Imprime tiempo de inserción, latencia media y Recall@10 contra la búsqueda exacta. Qdrant en memoria busca exacto y no arma el grafo; Chroma sí usa HNSW.</li>
+      <li><a class="jump" href="#pruebas" data-file="04_embeddings_espanol.py">04_embeddings_espanol.py</a> corre cinco consultas en español —plata, laburo, estar en el horno, y dos de sistemas— en <code>all-MiniLM-L6-v2</code> y en el modelo multilingüe. El entregable es el ranking de cada uno.</li>
+    </ol>
+  </section>
+
+  <section class="block codeview" id="pruebas">
+    <h2>Scripts para probar</h2>
+    <p class="lede">Los cuatro leen bien abriendo este archivo directo. Si servís la carpeta, el visor toma el <code>.py</code> del disco.</p>
+    <div class="tabs" role="tablist" aria-label="Scripts de la clase 2">
+      <button class="tab" type="button" role="tab" id="tab-01_similitud.py" aria-selected="true" aria-controls="ex-code">Similitud</button>
+      <button class="tab" type="button" role="tab" id="tab-02_qdrant_hnsw.py" aria-selected="false" aria-controls="ex-code">Qdrant</button>
+      <button class="tab" type="button" role="tab" id="tab-03_benchmark_hnsw.py" aria-selected="false" aria-controls="ex-code">Benchmark</button>
+      <button class="tab" type="button" role="tab" id="tab-04_embeddings_espanol.py" aria-selected="false" aria-controls="ex-code">Español</button>
+    </div>
+    <p class="ex-desc" id="ex-desc"></p>
+    <p class="ex-file" id="ex-file"></p>
+    <pre class="ex-code"><code id="ex-code"></code></pre>
+    <p class="ex-run" id="ex-run"></p>
+  </section>
+</div>
+
+<script type="text/plain" id="src-01_similitud.py">
+"""Coseno, producto punto y distancia L2 sobre tres frases.
+
+El modelo multilingüe embebe la consulta y los documentos. La similitud
+coseno solo mira el ángulo. El producto punto y la distancia L2 también
+responden al largo del vector, así que no tienen por qué coincidir con el coseno.
+"""
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+docs = [
+    "El API Gateway autentica usuarios y centraliza políticas de rate limiting.",
+    "El balanceador distribuye tráfico entrante entre instancias de backend.",
+    "La amortización de pasivos financieros se registra en asientos contables.",
+]
+query = "¿Cómo distribuir y balancear solicitudes en la red?"
+
+model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+doc_vecs = model.encode(docs, normalize_embeddings=False)
+query_vec = model.encode([query], normalize_embeddings=False)
+scores = cosine_similarity(query_vec, doc_vecs)[0]
+q = query_vec[0]
+
+print(f"Consulta: {query}\n")
+for i, texto in enumerate(docs):
+    v = doc_vecs[i]
+    punto = float(np.dot(q, v))
+    l2 = float(np.linalg.norm(q - v))
+    print(f"Doc {i + 1} | Coseno: {scores[i]:.4f} | Punto: {punto:.4f} | L2: {l2:.4f}")
+    print(f"         {texto}")
+    print()
+</script>
+<script type="text/plain" id="src-02_qdrant_hnsw.py">
+"""Indexa tres documentos en Qdrant en memoria y busca la consulta.
+
+m y ef_construct quedan guardados en la colección. hnsw_ef es el ancho de
+la búsqueda. El cliente local (:memory:) resuelve por fuerza bruta, así que
+con tres puntos el resultado es el exacto; contra un Qdrant en servidor,
+hnsw_ef sí recorre el grafo.
+"""
+
+import warnings
+
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import (
+    Distance,
+    HnswConfigDiff,
+    PointStruct,
+    SearchParams,
+    VectorParams,
+)
+from sentence_transformers import SentenceTransformer
+
+warnings.filterwarnings("ignore", message="Local mode performs exact")
+
+docs = [
+    "El API Gateway autentica usuarios y centraliza políticas de rate limiting.",
+    "El balanceador distribuye tráfico entrante entre instancias de backend.",
+    "La amortización de pasivos financieros se registra en asientos contables.",
+]
+query = "¿Cómo distribuir y balancear solicitudes en la red?"
+
+model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+doc_vecs = model.encode(docs)
+query_vec = model.encode([query])
+
+client = QdrantClient(location=":memory:")
+client.create_collection(
+    collection_name="kb_infra",
+    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+    hnsw_config=HnswConfigDiff(m=16, ef_construct=100),
+)
+client.upsert(
+    collection_name="kb_infra",
+    points=[
+        PointStruct(id=i, vector=doc_vecs[i].tolist(), payload={"text": docs[i]})
+        for i in range(len(docs))
+    ],
+    wait=True,
+)
+
+res = client.query_points(
+    collection_name="kb_infra",
+    query=query_vec[0].tolist(),
+    limit=2,
+    search_params=SearchParams(hnsw_ef=64),
+)
+
+print(f"Consulta: {query}")
+print("Índice: HNSW  m=16  ef_construct=100  hnsw_ef=64\n")
+for p in res.points:
+    print(f"Hit ID: {p.id} | Score: {p.score:.4f} | {p.payload['text']}")
+</script>
+<script type="text/plain" id="src-03_benchmark_hnsw.py">
+"""Compara dos HNSW sobre 5.000 vectores aleatorios de dimensión 384.
+
+La configuración rápida arma un grafo chico. La de alta fidelidad arma uno
+más denso. Las dos se consultan con el mismo ef de búsqueda, así la
+diferencia viene de M y ef_construction. El Recall@10 se mide contra la
+búsqueda exacta en NumPy.
+
+Qdrant en :memory: busca por fuerza bruta y no arma el grafo. Este
+laboratorio usa Chroma, que indexa con hnswlib y sí honra esos parámetros.
+"""
+
+import time
+
+import chromadb
+import numpy as np
+
+N = 5_000
+D = 384
+K = 10
+CONSULTAS = 20
+# Fijo y bajo a propósito: con ef alto las dos configs aciertan todo y no se ve el trade-off.
+HNSW_EF = 16
+
+rng = np.random.default_rng(7)
+base = rng.standard_normal((N, D)).astype(np.float32)
+base /= np.linalg.norm(base, axis=1, keepdims=True)
+queries = rng.standard_normal((CONSULTAS, D)).astype(np.float32)
+queries /= np.linalg.norm(queries, axis=1, keepdims=True)
+
+configs = [
+    ("Rápida", "bench_rapida", 16, 64),
+    ("Alta fidelidad", "bench_fiel", 64, 256),
+]
+
+
+def vecinos_exactos(q):
+    scores = base @ q
+    return set(np.argsort(-scores)[:K].tolist())
+
+
+def medir(client, nombre, coleccion, m, ef_construct):
+    col = client.create_collection(
+        name=coleccion,
+        metadata={
+            "hnsw:space": "cosine",
+            "hnsw:M": m,
+            "hnsw:construction_ef": ef_construct,
+            "hnsw:search_ef": HNSW_EF,
+        },
+    )
+    ids = [str(i) for i in range(N)]
+    vectores = base.tolist()
+    t0 = time.perf_counter()
+    for inicio in range(0, N, 1000):
+        fin = inicio + 1000
+        col.add(ids=ids[inicio:fin], embeddings=vectores[inicio:fin])
+    insercion = time.perf_counter() - t0
+
+    recalls = []
+    t1 = time.perf_counter()
+    for q in queries:
+        res = col.query(query_embeddings=[q.tolist()], n_results=K)
+        hallados = {int(i) for i in res["ids"][0]}
+        recalls.append(len(hallados & vecinos_exactos(q)) / K)
+    latencia_ms = (time.perf_counter() - t1) / CONSULTAS * 1000
+    recall = float(np.mean(recalls))
+    print(
+        f"{nombre:16}  m={m:<3} ef_construct={ef_construct:<4}  "
+        f"inserción {insercion:6.2f} s   "
+        f"latencia {latencia_ms:6.2f} ms   "
+        f"Recall@{K} {recall:.3f}"
+    )
+
+
+print(f"{N} vectores · dimensión {D} · {CONSULTAS} consultas · ef de búsqueda={HNSW_EF}\n")
+client = chromadb.EphemeralClient()
+for nombre, coleccion, m, ef_construct in configs:
+    medir(client, nombre, coleccion, m, ef_construct)
+</script>
+<script type="text/plain" id="src-04_embeddings_espanol.py">
+"""Compara un modelo entrenado en inglés con uno multilingüe.
+
+Cinco consultas en español, con modismos y con jerga de sistemas, contra el
+mismo corpus corto. El ranking es por similitud coseno. Un modelo que no vio
+español técnico suele subir pasajes que comparten palabras sueltas y bajar
+el que de verdad responde.
+"""
+
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+CORPUS = [
+    "El sueldo se cobra el primer día hábil. La plata entra en la cuenta del banco.",
+    "Conseguí laburo nuevo en el área de sistemas y empiezo el lunes.",
+    "Si no entregamos el informe hoy estamos en el horno con la gerencia.",
+    "El API Gateway autentica usuarios y centraliza las políticas de rate limiting.",
+    "El balanceador distribuye el tráfico entrante entre las instancias del backend.",
+    "La amortización de pasivos financieros se registra en asientos contables.",
+    "El préstamo de la biblioteca dura siete días y se renueva una vez.",
+    "Hay que declarar el uso de herramientas de IA en la portada del trabajo.",
+    "La base vectorial guarda embeddings y busca los más parecidos a la consulta.",
+    "Un índice HNSW arma un grafo para no comparar la consulta contra todos los vectores.",
+]
+CONSULTAS = [
+    "¿Dónde veo si ya me depositaron la plata?",
+    "¿Cómo consigo laburo en sistemas?",
+    "¿Qué pasa si llegamos tarde y estamos en el horno?",
+    "¿Cómo repartir las solicitudes entre los servidores?",
+    "¿Para qué sirve un índice HNSW en una base de vectores?",
+]
+MODELOS = [
+    ("Inglés", "all-MiniLM-L6-v2"),
+    ("Multilingüe", "paraphrase-multilingual-MiniLM-L12-v2"),
+]
+TOP = 3
+
+
+def ranking(model, consulta):
+    q = model.encode([consulta])
+    docs = model.encode(CORPUS)
+    scores = cosine_similarity(q, docs)[0]
+    orden = scores.argsort()[::-1][:TOP]
+    return [(int(i), float(scores[i])) for i in orden]
+
+
+cargados = [(nombre, SentenceTransformer(modelo)) for nombre, modelo in MODELOS]
+
+for consulta in CONSULTAS:
+    print(f"\nConsulta: {consulta}")
+    for nombre, model in cargados:
+        print(f"  {nombre}")
+        for puesto, (i, score) in enumerate(ranking(model, consulta), 1):
+            print(f"    {puesto}. {score:.3f}  {CORPUS[i]}")
+</script>
+
+<script>
+(() => {
+  'use strict';
+  const examples = [
+    { file: '01_similitud.py', desc: 'Coseno, producto punto y L2 sobre tres frases de infraestructura y la pregunta por el balanceo.' },
+    { file: '02_qdrant_hnsw.py', desc: 'Colección HNSW en memoria: m, ef_construct y hnsw_ef, y los dos hits de la consulta.' },
+    { file: '03_benchmark_hnsw.py', desc: '5.000 vectores aleatorios en Chroma. Compara inserción, latencia y Recall@10 de dos HNSW.' },
+    { file: '04_embeddings_espanol.py', desc: 'Cinco consultas en español. Ranking del modelo en inglés contra el multilingüe.' }
+  ];
+  const descEl = document.getElementById('ex-desc');
+  const fileEl = document.getElementById('ex-file');
+  const codeEl = document.getElementById('ex-code');
+  const runEl = document.getElementById('ex-run');
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function highlight(code) {
+    const re = /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|#.*$|\b(?:from|import|as|def|return|class|if|elif|else|for|in|not|and|or|with|lambda|None|True|False|try|except|pass|yield)\b)/gm;
+    let last = 0, out = '', m;
+    while ((m = re.exec(code))) {
+      out += escapeHtml(code.slice(last, m.index));
+      const t = m[0];
+      const cls = t[0] === '#' ? 'cmt' : (t[0] === '"' || t[0] === "'") ? 'str' : 'kw';
+      out += '<span class="' + cls + '">' + escapeHtml(t) + '</span>';
+      last = m.index + t.length;
+    }
+    return out + escapeHtml(code.slice(last));
+  }
+
+  function embedded(file) {
+    const node = document.getElementById('src-' + file);
+    return node ? node.textContent.replace(/^\n/, '').replace(/\n$/, '') : '';
+  }
+
+  async function load(file) {
+    const fallback = embedded(file);
+    try {
+      const res = await fetch('pruebas/' + encodeURIComponent(file));
+      if (!res.ok) throw new Error('status');
+      const text = await res.text();
+      if (!text.trim()) throw new Error('empty');
+      return text.replace(/\s+$/, '');
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  async function show(file) {
+    examples.forEach(ex => {
+      document.getElementById('tab-' + ex.file).setAttribute('aria-selected', ex.file === file ? 'true' : 'false');
+    });
+    const ex = examples.find(item => item.file === file);
+    descEl.textContent = ex.desc;
+    fileEl.textContent = 'pruebas/' + file;
+    runEl.textContent = '';
+    runEl.append('Desde la carpeta clase2: ');
+    const pip = document.createElement('code');
+    pip.textContent = 'pip install -r pruebas/requirements.txt';
+    const py = document.createElement('code');
+    py.textContent = 'python pruebas/' + file;
+    runEl.append(pip, ' y después ', py);
+    const src = await load(file);
+    codeEl.innerHTML = highlight(src);
+  }
+
+  document.querySelectorAll('.tabs .tab').forEach(tab => {
+    tab.addEventListener('click', () => show(tab.id.slice('tab-'.length)));
+  });
+  document.querySelectorAll('a[data-file]').forEach(a => {
+    a.addEventListener('click', () => {
+      show(a.dataset.file);
+    });
+  });
+  show(examples[0].file);
+
+  const links = [...document.querySelectorAll('.blocknav a')];
+  const sections = [...document.querySelectorAll('.block[id]')];
+  if (window.IntersectionObserver) {
+    const obs = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        links.forEach(a => a.removeAttribute('aria-current'));
+        const current = document.querySelector('.blocknav a[href="#' + entry.target.id + '"]');
+        if (current) current.setAttribute('aria-current', 'true');
+      });
+    }, { rootMargin: '-30% 0px -55% 0px', threshold: 0.01 });
+    sections.forEach(s => obs.observe(s));
+  }
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const U_ANG = 28 * Math.PI / 180;
+  const U_LEN = 120;
+  const OX = 48, OY = 250;
+  const fmt = n => n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  function arrow(parent, x0, y0, x1, y1, color) {
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', x0); line.setAttribute('y1', y0);
+    line.setAttribute('x2', x1); line.setAttribute('y2', y1);
+    line.setAttribute('stroke', color); line.setAttribute('stroke-width', '3');
+    line.setAttribute('stroke-linecap', 'round');
+    const head = 12, wing = 5.5;
+    const poly = document.createElementNS(NS, 'polygon');
+    const p2x = x1 - head * Math.cos(ang) + wing * Math.sin(ang);
+    const p2y = y1 - head * Math.sin(ang) - wing * Math.cos(ang);
+    const p3x = x1 - head * Math.cos(ang) - wing * Math.sin(ang);
+    const p3y = y1 - head * Math.sin(ang) + wing * Math.cos(ang);
+    poly.setAttribute('points', x1 + ',' + y1 + ' ' + p2x + ',' + p2y + ' ' + p3x + ',' + p3y);
+    poly.setAttribute('fill', color);
+    parent.append(line, poly);
+  }
+
+  function draw() {
+    const ang = Number(document.getElementById('ang').value) * Math.PI / 180;
+    const len = Number(document.getElementById('len').value);
+    const ux = U_LEN * Math.cos(U_ANG), uy = U_LEN * Math.sin(U_ANG);
+    const vx = len * Math.cos(ang), vy = len * Math.sin(ang);
+    const S = 100;
+    const dot = (ux * vx + uy * vy) / (S * S);
+    const cos = dot / ((U_LEN / S) * (len / S));
+    const l2 = Math.hypot(ux - vx, uy - vy) / S;
+    document.getElementById('m-cos').textContent = fmt(cos);
+    document.getElementById('m-dot').textContent = fmt(dot);
+    document.getElementById('m-l2').textContent = fmt(l2);
+    const same = Math.abs(ang - U_ANG) < 0.02;
+    document.getElementById('hint').textContent = same
+      ? 'Misma dirección: el coseno vale 1. Alargar el violeta mueve el punto y la L2.'
+      : 'Girar cambia el coseno. Alargar, con el ángulo quieto, no.';
+    const g = document.getElementById('vecs');
+    g.replaceChildren();
+    arrow(g, OX, OY, OX + ux, OY - uy, '#2F6FED');
+    arrow(g, OX, OY, OX + vx, OY - vy, '#6B5BD6');
+  }
+  document.getElementById('ang').addEventListener('input', draw);
+  document.getElementById('len').addEventListener('input', draw);
+  draw();
+})();
+</script>
+</body>
+</html>

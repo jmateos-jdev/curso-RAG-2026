@@ -1,0 +1,7 @@
+langchain-text-splitters
+langchain-classic
+langchain-experimental
+langchain-huggingface
+langchain-core
+sentence-transformers
+tiktoken

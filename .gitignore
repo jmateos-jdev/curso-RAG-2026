@@ -1,0 +1,18 @@
+venv/
+.venv/
+
+__pycache__/
+*.py[cod]
+
+.DS_Store
+
+.env
+
+# Caché local si HF_HOME o SENTENCE_TRANSFORMERS_HOME apuntan al repo.
+# La caché por defecto vive en ~/.cache y no entra al repositorio.
+.cache/
+huggingface/
+
+# Datos locales, por si Qdrant o Chroma dejan de correr en memoria.
+chroma_data/
+qdrant_storage/
